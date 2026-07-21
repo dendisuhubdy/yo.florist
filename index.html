@@ -1,0 +1,1020 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flower Aggregator — Every florist in your city. One search.</title>
+<meta name="description" content="Compare bouquets, real delivery-included prices, availability and reviews across local florists and national brands — then order in one checkout.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,300..900&family=Karla:ital,wght@0,300..800;1,300..800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #f6f1e6;
+    --paper-deep: #efe7d6;
+    --ink: #22301f;
+    --green: #2f4a32;
+    --green-soft: #5c7a54;
+    --poppy: #d94f2b;
+    --poppy-deep: #b93d1e;
+    --rose: #e9b4c0;
+    --gold: #c8973e;
+    --line: rgba(34, 48, 31, 0.16);
+    --serif: "Fraunces", Georgia, serif;
+    --sans: "Karla", "Helvetica Neue", sans-serif;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: var(--sans);
+    background: var(--paper);
+    color: var(--ink);
+    line-height: 1.6;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::selection { background: var(--poppy); color: var(--paper); }
+
+  /* grain overlay */
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 999;
+    opacity: 0.5;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
+  }
+
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 28px; }
+
+  /* ───────────── header ───────────── */
+  header {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: color-mix(in srgb, var(--paper) 88%, transparent);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--line);
+  }
+  .nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 28px;
+    max-width: 1180px;
+    margin: 0 auto;
+  }
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: 1.25rem;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+    text-decoration: none;
+  }
+  .logo svg { width: 30px; height: 30px; }
+  .nav-links { display: flex; gap: 32px; align-items: center; }
+  .nav-links a {
+    color: var(--ink);
+    text-decoration: none;
+    font-size: 0.92rem;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    transition: color 0.2s;
+  }
+  .nav-links a:hover { color: var(--poppy); }
+  .btn {
+    display: inline-block;
+    background: var(--green);
+    color: var(--paper);
+    font-family: var(--sans);
+    font-weight: 700;
+    font-size: 0.92rem;
+    letter-spacing: 0.02em;
+    padding: 12px 26px;
+    border-radius: 100px;
+    text-decoration: none;
+    border: none;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.2s;
+  }
+  .btn:hover { background: var(--poppy); transform: translateY(-2px); }
+  .btn.poppy { background: var(--poppy); }
+  .btn.poppy:hover { background: var(--poppy-deep); }
+  .btn.ghost {
+    background: transparent;
+    color: var(--ink);
+    border: 1.5px solid var(--ink);
+  }
+  .btn.ghost:hover { background: var(--ink); color: var(--paper); transform: translateY(-2px); }
+
+  /* ───────────── hero ───────────── */
+  .hero {
+    position: relative;
+    padding: 90px 0 70px;
+  }
+  .hero-grid {
+    display: grid;
+    grid-template-columns: 1.05fr 0.95fr;
+    gap: 60px;
+    align-items: center;
+  }
+  .kicker {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--poppy);
+    margin-bottom: 22px;
+  }
+  .kicker::before {
+    content: "";
+    width: 28px;
+    height: 1.5px;
+    background: var(--poppy);
+  }
+  h1 {
+    font-family: var(--serif);
+    font-size: clamp(2.6rem, 5.4vw, 4.3rem);
+    font-weight: 480;
+    line-height: 1.04;
+    letter-spacing: -0.025em;
+    margin-bottom: 26px;
+  }
+  h1 em {
+    font-style: italic;
+    font-weight: 400;
+    color: var(--poppy);
+  }
+  .hero-sub {
+    font-size: 1.13rem;
+    max-width: 46ch;
+    color: color-mix(in srgb, var(--ink) 78%, transparent);
+    margin-bottom: 36px;
+  }
+
+  /* mock search bar */
+  .search-mock {
+    background: #fff;
+    border: 1.5px solid var(--ink);
+    border-radius: 18px;
+    box-shadow: 6px 6px 0 var(--ink);
+    padding: 10px;
+    display: flex;
+    gap: 8px;
+    align-items: stretch;
+    max-width: 540px;
+  }
+  .search-field {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 8px 16px;
+    border-right: 1px solid var(--line);
+    min-width: 0;
+  }
+  .search-field:nth-child(2) { flex: 0.7; border-right: none; }
+  .search-field label {
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--green-soft);
+  }
+  .search-field input {
+    border: none;
+    outline: none;
+    font-family: var(--sans);
+    font-size: 0.98rem;
+    font-weight: 600;
+    color: var(--ink);
+    background: transparent;
+    width: 100%;
+  }
+  .search-field input::placeholder { color: color-mix(in srgb, var(--ink) 40%, transparent); }
+  .search-mock .btn { align-self: center; white-space: nowrap; }
+
+  .hero-note {
+    margin-top: 18px;
+    font-size: 0.85rem;
+    color: color-mix(in srgb, var(--ink) 60%, transparent);
+  }
+  .hero-note strong { color: var(--green); }
+
+  /* hero comparison cards */
+  .hero-visual { position: relative; }
+  .stack-label {
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--green-soft);
+    margin-bottom: 12px;
+    position: relative;
+    z-index: 2;
+  }
+  .stack-label.error { color: var(--poppy-deep); }
+  .visit-link {
+    display: inline-block;
+    background: var(--green);
+    color: var(--paper);
+    font-weight: 700;
+    font-size: 0.8rem;
+    padding: 8px 16px;
+    border-radius: 100px;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: background 0.2s;
+  }
+  .visit-link:hover { background: var(--poppy); }
+  .compare-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    position: relative;
+    z-index: 2;
+  }
+  .compare-card {
+    background: #fff;
+    border: 1.5px solid var(--ink);
+    border-radius: 16px;
+    padding: 16px 20px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
+  }
+  .compare-card:hover {
+    transform: translateX(-6px);
+    box-shadow: 6px 6px 0 var(--rose);
+  }
+  .compare-card.best {
+    border-width: 2px;
+    box-shadow: 6px 6px 0 var(--poppy);
+    transform: rotate(-1deg);
+  }
+  .compare-card.best:hover { transform: rotate(-1deg) translateX(-6px); }
+  .bouquet-dot {
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+  }
+  .bouquet-dot svg { width: 30px; height: 30px; }
+  .compare-info { flex: 1; min-width: 0; }
+  .compare-info .name { font-weight: 800; font-size: 0.98rem; }
+  .compare-info .meta {
+    font-size: 0.8rem;
+    color: color-mix(in srgb, var(--ink) 60%, transparent);
+  }
+  .compare-info .meta .stars { color: var(--gold); letter-spacing: 0.05em; }
+  .compare-price { text-align: right; }
+  .compare-price .amount {
+    font-family: var(--serif);
+    font-size: 1.45rem;
+    font-weight: 600;
+  }
+  .compare-price .incl {
+    display: block;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--green-soft);
+  }
+  .badge {
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    background: var(--poppy);
+    color: #fff;
+    padding: 4px 10px;
+    border-radius: 100px;
+    white-space: nowrap;
+  }
+  .badge.green { background: var(--green); }
+
+  .hero-flower {
+    position: absolute;
+    top: -70px;
+    right: -60px;
+    width: 230px;
+    opacity: 0.9;
+    z-index: 1;
+    animation: sway 7s ease-in-out infinite alternate;
+    transform-origin: bottom center;
+  }
+  @keyframes sway {
+    from { transform: rotate(-3deg); }
+    to { transform: rotate(4deg); }
+  }
+
+  /* ───────────── ticker ───────────── */
+  .ticker {
+    border-top: 1.5px solid var(--ink);
+    border-bottom: 1.5px solid var(--ink);
+    background: var(--green);
+    color: var(--paper);
+    overflow: hidden;
+    padding: 13px 0;
+    white-space: nowrap;
+  }
+  .ticker-track {
+    display: inline-flex;
+    gap: 48px;
+    animation: scroll 32s linear infinite;
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 1.05rem;
+    letter-spacing: 0.02em;
+  }
+  .ticker-track span { display: inline-flex; align-items: center; gap: 48px; }
+  .ticker-track em { font-style: normal; color: var(--rose); font-size: 0.8em; }
+  @keyframes scroll {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+  }
+
+  /* ───────────── sections ───────────── */
+  section { padding: 96px 0; }
+  .section-head { max-width: 640px; margin-bottom: 56px; }
+  h2 {
+    font-family: var(--serif);
+    font-size: clamp(2rem, 3.6vw, 2.9rem);
+    font-weight: 500;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+    margin-bottom: 18px;
+  }
+  h2 em { font-style: italic; color: var(--poppy); font-weight: 400; }
+  .section-head p {
+    font-size: 1.08rem;
+    color: color-mix(in srgb, var(--ink) 75%, transparent);
+  }
+
+  /* problem */
+  .problem { background: var(--paper-deep); border-bottom: 1.5px solid var(--line); }
+  .problem-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0;
+    border: 1.5px solid var(--ink);
+    border-radius: 20px;
+    overflow: hidden;
+    background: #fff;
+  }
+  .problem-cell {
+    padding: 40px 34px;
+    border-right: 1.5px solid var(--ink);
+  }
+  .problem-cell:last-child { border-right: none; }
+  .problem-cell .big {
+    font-family: var(--serif);
+    font-size: 3rem;
+    font-weight: 550;
+    line-height: 1;
+    color: var(--poppy);
+    margin-bottom: 14px;
+  }
+  .problem-cell h3 { font-size: 1.05rem; font-weight: 800; margin-bottom: 8px; }
+  .problem-cell p { font-size: 0.93rem; color: color-mix(in srgb, var(--ink) 70%, transparent); }
+
+  /* how it works */
+  .steps {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 28px;
+  }
+  .step {
+    position: relative;
+    padding: 36px 30px 32px;
+    border: 1.5px solid var(--ink);
+    border-radius: 20px;
+    background: #fff;
+    transition: transform 0.25s, box-shadow 0.25s;
+  }
+  .step:hover { transform: translateY(-6px); box-shadow: 8px 8px 0 var(--green); }
+  .step:nth-child(2) { top: 26px; }
+  .step:nth-child(3) { top: 52px; }
+  .step-num {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 0.95rem;
+    color: var(--poppy);
+    margin-bottom: 16px;
+    display: block;
+  }
+  .step h3 {
+    font-family: var(--serif);
+    font-size: 1.5rem;
+    font-weight: 550;
+    margin-bottom: 12px;
+    letter-spacing: -0.01em;
+  }
+  .step p { font-size: 0.96rem; color: color-mix(in srgb, var(--ink) 72%, transparent); }
+
+  /* why */
+  .why { background: var(--green); color: var(--paper); position: relative; }
+  .why h2 em { color: var(--rose); }
+  .why .section-head p { color: color-mix(in srgb, var(--paper) 75%, transparent); }
+  .why-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 44px; }
+  .why-item { border-top: 1.5px solid color-mix(in srgb, var(--paper) 35%, transparent); padding-top: 24px; }
+  .why-item h3 {
+    font-family: var(--serif);
+    font-size: 1.35rem;
+    font-weight: 500;
+    margin-bottom: 12px;
+  }
+  .why-item p { font-size: 0.95rem; color: color-mix(in srgb, var(--paper) 72%, transparent); }
+  .why-flower {
+    position: absolute;
+    bottom: -20px;
+    right: 4%;
+    width: 150px;
+    opacity: 0.35;
+  }
+
+  /* florists */
+  .florists-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 70px;
+    align-items: center;
+  }
+  .florists-grid h2 { margin-bottom: 20px; }
+  .florists-grid > div > p {
+    font-size: 1.05rem;
+    color: color-mix(in srgb, var(--ink) 75%, transparent);
+    margin-bottom: 28px;
+  }
+  .check-list { list-style: none; margin-bottom: 36px; }
+  .check-list li {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--line);
+    font-size: 0.98rem;
+  }
+  .check-list li::before {
+    content: "✿";
+    color: var(--poppy);
+    font-size: 1.1rem;
+    line-height: 1.4;
+  }
+  .florist-card {
+    background: #fff;
+    border: 1.5px solid var(--ink);
+    border-radius: 22px;
+    padding: 40px 36px;
+    box-shadow: 10px 10px 0 var(--rose);
+    transform: rotate(1.2deg);
+  }
+  .florist-card .quote {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 1.35rem;
+    line-height: 1.4;
+    margin-bottom: 24px;
+  }
+  .florist-card .who { display: flex; align-items: center; gap: 14px; }
+  .florist-card .avatar {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: var(--green);
+    color: var(--paper);
+    display: grid;
+    place-items: center;
+    font-family: var(--serif);
+    font-weight: 600;
+  }
+  .florist-card .who .name { font-weight: 800; font-size: 0.95rem; }
+  .florist-card .who .role { font-size: 0.82rem; color: color-mix(in srgb, var(--ink) 60%, transparent); }
+
+  /* reminders CTA */
+  .reminder {
+    background: var(--paper-deep);
+    border-top: 1.5px solid var(--line);
+    border-bottom: 1.5px solid var(--line);
+    text-align: center;
+  }
+  .reminder .inner { max-width: 620px; margin: 0 auto; }
+  .reminder h2 { margin-bottom: 16px; }
+  .reminder p {
+    font-size: 1.05rem;
+    color: color-mix(in srgb, var(--ink) 75%, transparent);
+    margin-bottom: 32px;
+  }
+  .reminder-form {
+    display: flex;
+    gap: 10px;
+    max-width: 460px;
+    margin: 0 auto;
+  }
+  .reminder-form input {
+    flex: 1;
+    padding: 14px 22px;
+    border: 1.5px solid var(--ink);
+    border-radius: 100px;
+    font-family: var(--sans);
+    font-size: 0.95rem;
+    background: #fff;
+    outline: none;
+  }
+  .reminder-form input:focus { border-color: var(--poppy); }
+
+  /* footer */
+  footer {
+    background: var(--ink);
+    color: var(--paper);
+    padding: 70px 0 36px;
+  }
+  .footer-grid {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr 1fr 1fr;
+    gap: 48px;
+    margin-bottom: 56px;
+  }
+  .footer-grid .logo { color: var(--paper); margin-bottom: 16px; }
+  .footer-grid p { font-size: 0.88rem; color: color-mix(in srgb, var(--paper) 60%, transparent); max-width: 30ch; }
+  .footer-grid h4 {
+    font-size: 0.75rem;
+    font-weight: 800;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--rose);
+    margin-bottom: 16px;
+  }
+  .footer-grid ul { list-style: none; }
+  .footer-grid ul li { margin-bottom: 10px; }
+  .footer-grid ul a {
+    color: color-mix(in srgb, var(--paper) 75%, transparent);
+    text-decoration: none;
+    font-size: 0.92rem;
+    transition: color 0.2s;
+  }
+  .footer-grid ul a:hover { color: var(--poppy); }
+  .footer-bottom {
+    border-top: 1px solid color-mix(in srgb, var(--paper) 20%, transparent);
+    padding-top: 28px;
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.82rem;
+    color: color-mix(in srgb, var(--paper) 50%, transparent);
+  }
+
+  /* reveal animation */
+  .reveal {
+    opacity: 0;
+    transform: translateY(28px);
+    transition: opacity 0.7s ease, transform 0.7s ease;
+  }
+  .reveal.in { opacity: 1; transform: none; }
+  .reveal.d1 { transition-delay: 0.1s; }
+  .reveal.d2 { transition-delay: 0.2s; }
+  .reveal.d3 { transition-delay: 0.3s; }
+
+  /* hero load-in */
+  .hero .load {
+    opacity: 0;
+    transform: translateY(24px);
+    animation: rise 0.8s ease forwards;
+  }
+  .hero .load.l1 { animation-delay: 0.05s; }
+  .hero .load.l2 { animation-delay: 0.15s; }
+  .hero .load.l3 { animation-delay: 0.25s; }
+  .hero .load.l4 { animation-delay: 0.35s; }
+  .hero .load.l5 { animation-delay: 0.5s; }
+  @keyframes rise { to { opacity: 1; transform: none; } }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+    .reveal, .hero .load { opacity: 1; transform: none; }
+  }
+
+  /* ───────────── responsive ───────────── */
+  @media (max-width: 940px) {
+    .hero-grid, .florists-grid { grid-template-columns: 1fr; gap: 48px; }
+    .hero-flower { top: -40px; right: -20px; width: 150px; }
+    .problem-grid { grid-template-columns: 1fr; }
+    .problem-cell { border-right: none; border-bottom: 1.5px solid var(--ink); }
+    .problem-cell:last-child { border-bottom: none; }
+    .steps { grid-template-columns: 1fr; }
+    .step:nth-child(2), .step:nth-child(3) { top: 0; }
+    .why-grid { grid-template-columns: 1fr; gap: 28px; }
+    .footer-grid { grid-template-columns: 1fr 1fr; }
+    .nav-links a:not(.btn) { display: none; }
+  }
+  @media (max-width: 560px) {
+    section { padding: 64px 0; }
+    .search-mock { flex-direction: column; }
+    .search-field { border-right: none; border-bottom: 1px solid var(--line); padding: 12px 16px; }
+    .search-field:nth-child(2) { border-bottom: none; }
+    .search-mock .btn { align-self: stretch; text-align: center; }
+    .reminder-form { flex-direction: column; }
+    .footer-grid { grid-template-columns: 1fr; }
+    .footer-bottom { flex-direction: column; gap: 8px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══════════ HEADER ═══════════ -->
+<header>
+  <nav class="nav">
+    <a class="logo" href="#">
+      <svg viewBox="0 0 40 40" fill="none" aria-hidden="true">
+        <circle cx="20" cy="13" r="6" fill="#d94f2b"/>
+        <circle cx="13" cy="20" r="6" fill="#e9b4c0"/>
+        <circle cx="27" cy="20" r="6" fill="#c8973e"/>
+        <circle cx="20" cy="20" r="4" fill="#22301f"/>
+        <path d="M20 24 C20 30 18 34 16 37 M20 24 C20 30 22 34 24 37" stroke="#2f4a32" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      Flower&nbsp;Aggregator
+    </a>
+    <div class="nav-links">
+      <a href="#how">How it works</a>
+      <a href="#why">Why us</a>
+      <a href="#florists">For florists</a>
+      <a href="#" class="btn">Find flowers</a>
+    </div>
+  </nav>
+</header>
+
+<!-- ═══════════ HERO ═══════════ -->
+<section class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <span class="kicker load l1">The flower market, in one place</span>
+      <h1 class="load l2">Every florist in your city. <em>One search.</em></h1>
+      <p class="hero-sub load l3">
+        Compare bouquets, real prices with delivery included, same-day availability
+        and reviews — across local florists and national brands. Then order through
+        a single checkout. We don't grow or arrange flowers. We make sure you get
+        the best ones near you.
+      </p>
+      <form class="search-mock load l4" id="hero-search">
+        <div class="search-field">
+          <label for="addr">Deliver to</label>
+          <input id="addr" type="text" placeholder="City or country — try “Jakarta, Indonesia”">
+        </div>
+        <div class="search-field">
+          <label for="date">Date</label>
+          <input id="date" type="date">
+        </div>
+        <button class="btn poppy" type="submit" id="search-btn">Compare&nbsp;→</button>
+      </form>
+      <p class="hero-note load l5">
+        <strong>No markups.</strong> The price you see is the florist's price — delivery included, before you click.
+      </p>
+    </div>
+
+    <div class="hero-visual load l5">
+      <svg class="hero-flower" viewBox="0 0 200 260" fill="none" aria-hidden="true">
+        <path d="M100 250 C100 190 96 150 100 110" stroke="#2f4a32" stroke-width="3" stroke-linecap="round"/>
+        <path d="M100 180 C80 170 62 172 48 186 C66 192 86 190 100 180Z" fill="#5c7a54"/>
+        <path d="M100 150 C120 140 138 142 152 156 C134 162 114 160 100 150Z" fill="#5c7a54"/>
+        <ellipse cx="100" cy="78" rx="20" ry="34" fill="#d94f2b"/>
+        <ellipse cx="74" cy="90" rx="20" ry="32" transform="rotate(-40 74 90)" fill="#e9b4c0"/>
+        <ellipse cx="126" cy="90" rx="20" ry="32" transform="rotate(40 126 90)" fill="#e9b4c0"/>
+        <ellipse cx="84" cy="112" rx="18" ry="26" transform="rotate(-75 84 112)" fill="#d94f2b"/>
+        <ellipse cx="116" cy="112" rx="18" ry="26" transform="rotate(75 116 112)" fill="#d94f2b"/>
+        <circle cx="100" cy="98" r="14" fill="#c8973e"/>
+      </svg>
+
+      <div class="stack-label" id="stack-label">Sample comparison — search to see your market</div>
+      <div class="compare-stack" id="compare-stack">
+        <div class="compare-card best">
+          <div class="bouquet-dot" style="background:#fbe3d8">
+            <svg viewBox="0 0 30 30" fill="none"><circle cx="15" cy="11" r="5" fill="#d94f2b"/><circle cx="10" cy="15" r="4" fill="#e9b4c0"/><circle cx="20" cy="15" r="4" fill="#c8973e"/><path d="M15 18 L15 26" stroke="#2f4a32" stroke-width="2" stroke-linecap="round"/></svg>
+          </div>
+          <div class="compare-info">
+            <div class="name">Petal &amp; Stem — “Garden Sunrise”</div>
+            <div class="meta"><span class="stars">★★★★★</span> 4.9 · 0.8 mi away · local florist</div>
+          </div>
+          <div class="compare-price">
+            <span class="badge">Best today</span>
+            <div class="amount">$54</div>
+            <span class="incl">delivery incl.</span>
+          </div>
+        </div>
+
+        <div class="compare-card">
+          <div class="bouquet-dot" style="background:#f0e2ef">
+            <svg viewBox="0 0 30 30" fill="none"><circle cx="15" cy="11" r="5" fill="#a05a8c"/><circle cx="10" cy="15" r="4" fill="#e9b4c0"/><circle cx="20" cy="15" r="4" fill="#d94f2b"/><path d="M15 18 L15 26" stroke="#2f4a32" stroke-width="2" stroke-linecap="round"/></svg>
+          </div>
+          <div class="compare-info">
+            <div class="name">BloomBox National — “Rosé All Day”</div>
+            <div class="meta"><span class="stars">★★★★☆</span> 4.6 · ships next-day</div>
+          </div>
+          <div class="compare-price">
+            <div class="amount">$68</div>
+            <span class="incl">delivery incl.</span>
+          </div>
+        </div>
+
+        <div class="compare-card">
+          <div class="bouquet-dot" style="background:#e7ecdd">
+            <svg viewBox="0 0 30 30" fill="none"><circle cx="15" cy="11" r="5" fill="#c8973e"/><circle cx="10" cy="15" r="4" fill="#5c7a54"/><circle cx="20" cy="15" r="4" fill="#e9b4c0"/><path d="M15 18 L15 26" stroke="#2f4a32" stroke-width="2" stroke-linecap="round"/></svg>
+          </div>
+          <div class="compare-info">
+            <div class="name">Marigold House — “Wildflower Hour”</div>
+            <div class="meta"><span class="stars">★★★★★</span> 4.8 · 1.4 mi away · <span class="badge green">same-day</span></div>
+          </div>
+          <div class="compare-price">
+            <div class="amount">$59</div>
+            <span class="incl">delivery incl.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ TICKER ═══════════ -->
+<div class="ticker" aria-hidden="true">
+  <div class="ticker-track">
+    <span>Birthdays <em>✿</em> Anniversaries <em>✿</em> Just because <em>✿</em> Get well soon <em>✿</em> New baby <em>✿</em> Congratulations <em>✿</em> Sympathy <em>✿</em> Valentine's Day <em>✿</em> Mother's Day <em>✿</em> Apologies, big &amp; small <em>✿</em></span>
+    <span>Birthdays <em>✿</em> Anniversaries <em>✿</em> Just because <em>✿</em> Get well soon <em>✿</em> New baby <em>✿</em> Congratulations <em>✿</em> Sympathy <em>✿</em> Valentine's Day <em>✿</em> Mother's Day <em>✿</em> Apologies, big &amp; small <em>✿</em></span>
+  </div>
+</div>
+
+<!-- ═══════════ PROBLEM ═══════════ -->
+<section class="problem">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <span class="kicker">The problem</span>
+      <h2>Ordering flowers online is <em>weirdly broken.</em></h2>
+      <p>You either gamble on one florist's website, or open twelve tabs and still can't compare a single real price.</p>
+    </div>
+    <div class="problem-grid">
+      <div class="problem-cell reveal d1">
+        <div class="big">12+</div>
+        <h3>Tabs, zero answers</h3>
+        <p>Dozens of florist sites, each with its own catalog, its own delivery rules, and no way to compare across them.</p>
+      </div>
+      <div class="problem-cell reveal d2">
+        <div class="big">+$18</div>
+        <h3>Surprise fees at checkout</h3>
+        <p>“$45” bouquets that become $70 after delivery, service and handling fees appear on the last screen.</p>
+      </div>
+      <div class="problem-cell reveal d3">
+        <div class="big">?</div>
+        <h3>Same-day roulette</h3>
+        <p>No florist tells you upfront whether they can actually reach your address today — you find out after you order.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ HOW IT WORKS ═══════════ -->
+<section id="how">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <span class="kicker">How it works</span>
+      <h2>Three steps. <em>One checkout.</em></h2>
+    </div>
+    <div class="steps">
+      <div class="step reveal d1">
+        <span class="step-num">— 01</span>
+        <h3>Tell us where &amp; when</h3>
+        <p>Enter the delivery address and date. We instantly filter to florists and brands that can actually deliver there, then.</p>
+      </div>
+      <div class="step reveal d2">
+        <span class="step-num">— 02</span>
+        <h3>Compare the whole market</h3>
+        <p>Bouquets side by side with real delivery-included prices, availability and verified reviews — locals and national brands together.</p>
+      </div>
+      <div class="step reveal d3">
+        <span class="step-num">— 03</span>
+        <h3>Order in one place</h3>
+        <p>Pick your favorite and check out with us. Your order routes straight to the florist's workshop, and we keep you posted until it's on the doorstep.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ WHY ═══════════ -->
+<section class="why" id="why">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <span class="kicker" style="color:var(--rose)">Why Flower Aggregator</span>
+      <h2>Built like a marketplace, <em>fresh like a corner shop.</em></h2>
+      <p>We hold no inventory and run no vans — every order is fulfilled by the best-placed florist near the recipient.</p>
+    </div>
+    <div class="why-grid">
+      <div class="why-item reveal d1">
+        <h3>True market-wide comparison</h3>
+        <p>Single-brand sites can only show you their own stock. We show everyone's — so the best bouquet wins, not the biggest ad budget.</p>
+      </div>
+      <div class="why-item reveal d2">
+        <h3>Local-first freshness</h3>
+        <p>Orders route to vetted florists closest to the recipient, so same-day means hand-delivered in hours — not shipped overnight in a box.</p>
+      </div>
+      <div class="why-item reveal d3">
+        <h3>Better for both sides</h3>
+        <p>Independent florists get the online visibility of a national brand; you get their craft and their prices. More florists, better choice — and around it goes.</p>
+      </div>
+    </div>
+  </div>
+  <svg class="why-flower" viewBox="0 0 200 260" fill="none" aria-hidden="true">
+    <path d="M100 250 C100 190 96 150 100 110" stroke="#f6f1e6" stroke-width="3" stroke-linecap="round"/>
+    <ellipse cx="100" cy="78" rx="20" ry="34" fill="#f6f1e6"/>
+    <ellipse cx="74" cy="90" rx="20" ry="32" transform="rotate(-40 74 90)" fill="#f6f1e6"/>
+    <ellipse cx="126" cy="90" rx="20" ry="32" transform="rotate(40 126 90)" fill="#f6f1e6"/>
+    <circle cx="100" cy="98" r="14" fill="#e9b4c0"/>
+  </svg>
+</section>
+
+<!-- ═══════════ FOR FLORISTS ═══════════ -->
+<section id="florists">
+  <div class="wrap florists-grid">
+    <div class="reveal">
+      <span class="kicker">For florists</span>
+      <h2>Your craft, <em>our storefront.</em></h2>
+      <p>Join a vetted network of 20–30 partners per city. No listing fees, no inventory commitments — a simple commission per order we bring you.</p>
+      <ul class="check-list">
+        <li>Commission-only: you pay a cut of orders we send, nothing else</li>
+        <li>Reach customers searching your exact delivery zone</li>
+        <li>Optional promoted placement, subscriptions &amp; corporate gifting</li>
+        <li>You keep your brand, your designs, your delivery radius</li>
+      </ul>
+      <a href="#" class="btn ghost">Become a partner florist</a>
+    </div>
+    <div class="florist-card reveal d2">
+      <p class="quote">“We're a two-person shop. We can't outrank the national brands on Google — but on here, our bouquets sit right next to theirs. And ours are fresher.”</p>
+      <div class="who">
+        <div class="avatar">M</div>
+        <div>
+          <div class="name">Marisol V.</div>
+          <div class="role">Owner, Petal &amp; Stem (partner florist)</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ REMINDER CTA ═══════════ -->
+<section class="reminder">
+  <div class="wrap inner reveal">
+    <span class="kicker" style="justify-content:center">Never forget again</span>
+    <h2>We'll remember the <em>anniversary</em> for you.</h2>
+    <p>Save your dates once. We'll nudge you a few days ahead with the best-priced bouquets that can reach their door on time.</p>
+    <form class="reminder-form" onsubmit="return false">
+      <input type="email" placeholder="you@example.com" aria-label="Email address">
+      <button class="btn poppy" type="submit">Set my reminders</button>
+    </form>
+  </div>
+</section>
+
+<!-- ═══════════ FOOTER ═══════════ -->
+<footer>
+  <div class="wrap">
+    <div class="footer-grid">
+      <div>
+        <a class="logo" href="#">
+          <svg viewBox="0 0 40 40" fill="none" aria-hidden="true">
+            <circle cx="20" cy="13" r="6" fill="#d94f2b"/>
+            <circle cx="13" cy="20" r="6" fill="#e9b4c0"/>
+            <circle cx="27" cy="20" r="6" fill="#c8973e"/>
+            <circle cx="20" cy="20" r="4" fill="#f6f1e6"/>
+            <path d="M20 24 C20 30 18 34 16 37 M20 24 C20 30 22 34 24 37" stroke="#e9b4c0" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+          Flower&nbsp;Aggregator
+        </a>
+        <p>The online marketplace that puts every flower delivery service in one place. We connect — florists create.</p>
+      </div>
+      <div>
+        <h4>Shop</h4>
+        <ul>
+          <li><a href="#">Same-day delivery</a></li>
+          <li><a href="#">Birthdays</a></li>
+          <li><a href="#">Anniversaries</a></li>
+          <li><a href="#">Sympathy</a></li>
+          <li><a href="#">Subscriptions</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>Partners</h4>
+        <ul>
+          <li><a href="#florists">Become a florist partner</a></li>
+          <li><a href="#">Corporate gifting</a></li>
+          <li><a href="#">Promoted placement</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>Company</h4>
+        <ul>
+          <li><a href="#">About</a></li>
+          <li><a href="#">Cities</a></li>
+          <li><a href="#">Help &amp; FAQ</a></li>
+          <li><a href="#">Contact</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 Flower Aggregator. All rights reserved.</span>
+      <span>Fresh from a florist near them, never from a warehouse.</span>
+    </div>
+  </div>
+</footer>
+
+<script>
+  const API = "https://api.yo.florist";
+  const form = document.getElementById("hero-search");
+  const stack = document.getElementById("compare-stack");
+  const label = document.getElementById("stack-label");
+  const btn = document.getElementById("search-btn");
+  const FLOWER_DOTS = [
+    { bg: "#fbe3d8", petals: ["#d94f2b", "#e9b4c0", "#c8973e"] },
+    { bg: "#f0e2ef", petals: ["#a05a8c", "#e9b4c0", "#d94f2b"] },
+    { bg: "#e7ecdd", petals: ["#c8973e", "#5c7a54", "#e9b4c0"] },
+  ];
+
+  function dotSvg(i) {
+    const d = FLOWER_DOTS[i % FLOWER_DOTS.length];
+    return `<div class="bouquet-dot" style="background:${d.bg}">
+      <svg viewBox="0 0 30 30" fill="none"><circle cx="15" cy="11" r="5" fill="${d.petals[0]}"/><circle cx="10" cy="15" r="4" fill="${d.petals[1]}"/><circle cx="20" cy="15" r="4" fill="${d.petals[2]}"/><path d="M15 18 L15 26" stroke="#2f4a32" stroke-width="2" stroke-linecap="round"/></svg>
+    </div>`;
+  }
+
+  function esc(s) {
+    return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+
+  function renderMatches(data) {
+    if (!data.count) {
+      label.textContent = "No partner found — try a city + country, e.g. “Paris, France”";
+      label.classList.add("error");
+      return;
+    }
+    label.classList.remove("error");
+    const when = data.date ? ` · for ${esc(data.date)}` : "";
+    label.textContent = `Your partner florist${data.count > 1 ? "s" : ""}${when}`;
+    stack.innerHTML = data.matches.slice(0, 3).map((m, i) => `
+      <div class="compare-card${i === 0 ? " best" : ""}">
+        ${dotSvg(i)}
+        <div class="compare-info">
+          <div class="name">${esc(m.name)} — ${esc(m.country)}</div>
+          <div class="meta">${esc(m.city)}${m.note ? " · " + esc(m.note) : ""}</div>
+        </div>
+        <div class="compare-price">
+          <a class="visit-link" href="${esc(m.website)}" target="_blank" rel="noopener">Visit&nbsp;→</a>
+        </div>
+      </div>`).join("");
+  }
+
+  form.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const q = document.getElementById("addr").value.trim();
+    const date = document.getElementById("date").value;
+    if (q.length < 2) {
+      label.textContent = "Type a city or country first";
+      label.classList.add("error");
+      return;
+    }
+    btn.disabled = true;
+    btn.textContent = "Searching…";
+    try {
+      const url = `${API}/v1/search?q=${encodeURIComponent(q)}` + (date ? `&date=${encodeURIComponent(date)}` : "");
+      const r = await fetch(url);
+      if (!r.ok) throw new Error(r.status);
+      renderMatches(await r.json());
+      stack.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    } catch {
+      label.textContent = "Search is unavailable right now — please try again shortly";
+      label.classList.add("error");
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = "Compare&nbsp;→";
+    }
+  });
+
+  const io = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      if (e.isIntersecting) {
+        e.target.classList.add('in');
+        io.unobserve(e.target);
+      }
+    }
+  }, { threshold: 0.15 });
+  document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+</script>
+
+</body>
+</html>
