@@ -53,7 +53,14 @@ class TestLandingPage(unittest.TestCase):
         html = body.decode()
         self.assertIn("Flower Aggregator", html)
         self.assertIn('id="hero-search"', html)
-        self.assertIn('id="order-modal"', html)
+        self.assertIn("/checkout", html)
+
+    def test_checkout_page_serves(self):
+        status, _, body = get(SITE + "/checkout?iso2=ID&country=Indonesia&florist=Test&fcity=Jakarta")
+        self.assertEqual(status, 200)
+        html = body.decode()
+        self.assertIn("Checkout", html)
+        self.assertIn("addr-suggest", html)
 
     def test_thanks_page_serves(self):
         status, _, body = get(SITE + "/thanks.html?order=YF-TEST")
@@ -188,6 +195,35 @@ class TestCatalog(unittest.TestCase):
         self.assertIsInstance(data["matches"][0]["items"], list)
 
 
+class TestGeo(unittest.TestCase):
+    def test_autocomplete_shape(self):
+        _, _, data = get_json(API + "/v1/geo/autocomplete?q=Jalan%20Raya%20Canggu&country=id")
+        self.assertIn(data["provider"], ("google", "photon", "none"))
+        self.assertIsInstance(data["suggestions"], list)
+        for s in data["suggestions"]:
+            self.assertTrue(s["label"])
+            # each suggestion must be resolvable: inline fields or a place_id
+            self.assertTrue(s["fields"] is not None or s["place_id"])
+
+    def test_autocomplete_query_too_short_422(self):
+        expect_http_error(self, 422, get_json, API + "/v1/geo/autocomplete?q=ab")
+
+    def test_cors_preflight_allows_order_post(self):
+        req = urllib.request.Request(
+            API + "/v1/orders",
+            method="OPTIONS",
+            headers={
+                "Origin": "https://yo.florist",
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "content-type",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+            self.assertEqual(r.status, 200)
+            allowed = r.headers.get("access-control-allow-methods", "")
+            self.assertIn("POST", allowed)
+
+
 class TestOrders(unittest.TestCase):
     """Purchase-order placeholder — Stripe checkout activates once keys land."""
 
@@ -233,6 +269,14 @@ class TestOrders(unittest.TestCase):
             item_price=59.5,
             item_currency="USD",
             item_url="https://example.com/products/peony-dream",
+            recipient_name="Test Recipient",
+            recipient_phone="+62 811 000 000",
+            street="Jl. Test No. 1",
+            city="Jakarta",
+            postal_code="12345",
+            delivery_instructions="leave with concierge",
+            lat=-6.2,
+            lng=106.8,
         )
         status, data = post_json(API + "/v1/orders", payload)
         self.assertEqual(status, 201)

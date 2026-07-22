@@ -21,6 +21,9 @@ CATALOG_FILE = Path("/opt/yoflorist/data/catalog.json")  # written daily by scra
 # Live Stripe key comes from /etc/yoflorist/stripe.env via the systemd unit.
 # When unset, orders fall back to the pre-launch placeholder payment block.
 STRIPE_SECRET_KEY = os.environ.get("FLOWER_STRIPE_SECRET_KEY", "")
+# Google Maps/Places key (PLACES_GO_SDK). Autocomplete prefers Google and
+# silently falls back to OSM Photon while the key's project has no billing.
+GOOGLE_MAPS_KEY = os.environ.get("PLACES_GO_SDK", "")
 STRIPE_API = "https://api.stripe.com/v1"
 SITE_URL = "https://yo.florist"
 # currencies Stripe treats as having no minor unit (charge amounts are whole)
@@ -44,7 +47,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_methods=["GET"],
+    allow_methods=["GET", "POST", "OPTIONS"],  # POST is needed for /v1/orders from the browser
     allow_headers=["*"],
 )
 
@@ -186,7 +189,103 @@ def catalog(
     }
 
 
-# ─── orders (Stripe payment pending account approval) ───
+# ─── address autocomplete (Google Places when billed, OSM Photon fallback) ───
+
+@app.get("/v1/geo/autocomplete", tags=["geo"], summary="Address autocomplete for the checkout page")
+def geo_autocomplete(
+    q: str = Query(..., min_length=3, max_length=200, description="Partial address"),
+    country: str | None = Query(None, max_length=2, description="ISO-2 country to restrict results to"),
+):
+    cc = (country or "").lower()
+    if GOOGLE_MAPS_KEY:
+        try:
+            params = {"input": q, "key": GOOGLE_MAPS_KEY}
+            if cc:
+                params["components"] = f"country:{cc}"
+            r = requests.get(
+                "https://maps.googleapis.com/maps/api/place/autocomplete/json",
+                params=params, timeout=8,
+            )
+            js = r.json()
+            if js.get("status") == "OK":
+                return {
+                    "provider": "google",
+                    "suggestions": [
+                        {"label": p["description"], "place_id": p["place_id"], "fields": None}
+                        for p in js.get("predictions", [])[:6]
+                    ],
+                }
+        except requests.RequestException:
+            pass
+    try:
+        r = requests.get(
+            "https://photon.komoot.io/api/",
+            params={"q": q, "limit": 10, "lang": "en"},
+            headers={"User-Agent": "yo.florist checkout (contact: dendi.suhubdy@gmail.com)"},
+            timeout=8,
+        )
+        suggestions = []
+        for f in r.json().get("features", []):
+            p = f.get("properties", {})
+            if cc and (p.get("countrycode") or "").lower() != cc:
+                continue
+            parts = [p.get("name"), p.get("street"), p.get("housenumber"), p.get("district"),
+                     p.get("city"), p.get("state"), p.get("postcode"), p.get("country")]
+            label = ", ".join(dict.fromkeys(str(x) for x in parts if x))
+            street = " ".join(str(x) for x in (p.get("street"), p.get("housenumber")) if x) or p.get("name")
+            lng, lat = ((f.get("geometry") or {}).get("coordinates") or [None, None])[:2]
+            suggestions.append({
+                "label": label,
+                "place_id": None,
+                "fields": {
+                    "street": street,
+                    "city": p.get("city") or p.get("district") or p.get("county"),
+                    "postal_code": p.get("postcode"),
+                    "lat": lat, "lng": lng,
+                },
+            })
+            if len(suggestions) >= 6:
+                break
+        return {"provider": "photon", "suggestions": suggestions}
+    except requests.RequestException:
+        return {"provider": "none", "suggestions": []}
+
+
+@app.get("/v1/geo/details", tags=["geo"], summary="Resolve a Google place_id to address fields")
+def geo_details(place_id: str = Query(..., max_length=300)):
+    if not GOOGLE_MAPS_KEY:
+        raise HTTPException(status_code=404, detail="Place details unavailable")
+    try:
+        r = requests.get(
+            "https://maps.googleapis.com/maps/api/place/details/json",
+            params={
+                "place_id": place_id,
+                "fields": "formatted_address,address_component,geometry/location",
+                "key": GOOGLE_MAPS_KEY,
+            },
+            timeout=8,
+        )
+        js = r.json()
+        if js.get("status") != "OK":
+            raise HTTPException(status_code=502, detail="Place lookup failed")
+        res = js["result"]
+        comp = {t: c["long_name"] for c in res.get("address_components", []) for t in c.get("types", [])}
+        loc = (res.get("geometry") or {}).get("location") or {}
+        street = " ".join(x for x in (comp.get("route"), comp.get("street_number")) if x)
+        return {
+            "label": res.get("formatted_address"),
+            "fields": {
+                "street": street or comp.get("sublocality") or "",
+                "city": comp.get("locality") or comp.get("administrative_area_level_2") or "",
+                "postal_code": comp.get("postal_code"),
+                "lat": loc.get("lat"), "lng": loc.get("lng"),
+            },
+        }
+    except requests.RequestException:
+        raise HTTPException(status_code=502, detail="Place lookup failed")
+
+
+# ─── orders ───
 
 def _db() -> sqlite3.Connection:
     DB_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -216,6 +315,14 @@ def _db() -> sqlite3.Connection:
         ("item_url", "TEXT"),
         ("stripe_session_id", "TEXT"),
         ("checkout_url", "TEXT"),
+        ("recipient_name", "TEXT"),
+        ("recipient_phone", "TEXT"),
+        ("street", "TEXT"),
+        ("city", "TEXT"),
+        ("postal_code", "TEXT"),
+        ("delivery_instructions", "TEXT"),
+        ("lat", "REAL"),
+        ("lng", "REAL"),
     ):
         if col not in have:
             conn.execute(f"ALTER TABLE orders ADD COLUMN {col} {typ}")
@@ -325,6 +432,15 @@ class OrderIn(BaseModel):
     item_price: float | None = Field(None, ge=0)
     item_currency: str | None = Field(None, max_length=8)
     item_url: str | None = Field(None, max_length=1000, description="Product page on the source florist's own site")
+    # structured recipient/delivery details from the checkout page
+    recipient_name: str | None = Field(None, max_length=120)
+    recipient_phone: str | None = Field(None, max_length=40)
+    street: str | None = Field(None, max_length=300)
+    city: str | None = Field(None, max_length=120)
+    postal_code: str | None = Field(None, max_length=20)
+    delivery_instructions: str | None = Field(None, max_length=500)
+    lat: float | None = Field(None, ge=-90, le=90)
+    lng: float | None = Field(None, ge=-180, le=180)
 
 
 @app.post("/v1/orders", status_code=201, tags=["orders"], summary="Create a purchase order (payment activates when Stripe is approved)")
@@ -343,8 +459,10 @@ def create_order(order: OrderIn):
             "INSERT INTO orders (id, created_at, status, iso2, florist, customer_name,"
             " email, address, delivery_date, budget_usd, message,"
             " item_title, item_price, item_currency, item_url,"
-            " stripe_session_id, checkout_url)"
-            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " stripe_session_id, checkout_url,"
+            " recipient_name, recipient_phone, street, city, postal_code,"
+            " delivery_instructions, lat, lng)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (
                 oid,
                 datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -363,6 +481,14 @@ def create_order(order: OrderIn):
                 order.item_url,
                 session_id,
                 checkout_url,
+                order.recipient_name,
+                order.recipient_phone,
+                order.street,
+                order.city,
+                order.postal_code,
+                order.delivery_instructions,
+                order.lat,
+                order.lng,
             ),
         )
     item = None
@@ -420,6 +546,8 @@ def get_order(order_id: str):
         "checkout_url": o["checkout_url"] if o["status"] == "pending_payment" else None,
     }
     # the customer-facing status endpoint doesn't echo back PII or session ids
-    for k in ("email", "address", "customer_name", "message", "stripe_session_id", "checkout_url"):
+    for k in ("email", "address", "customer_name", "message", "stripe_session_id", "checkout_url",
+              "recipient_name", "recipient_phone", "street", "city", "postal_code",
+              "delivery_instructions", "lat", "lng"):
         o.pop(k, None)
     return o

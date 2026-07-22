@@ -74,17 +74,6 @@
   .more-row { text-align: center; padding: 6px 0 80px; }
   .empty { text-align: center; padding: 60px 0 90px; color: color-mix(in srgb, var(--ink) 65%, transparent); }
 
-  dialog.order-modal { border: 1.5px solid var(--ink); border-radius: 22px; box-shadow: 10px 10px 0 var(--rose); background: var(--paper); color: var(--ink); padding: 36px 34px; width: min(480px, 92vw); font-family: var(--sans); }
-  dialog.order-modal::backdrop { background: rgba(34, 48, 31, 0.55); backdrop-filter: blur(3px); }
-  .order-modal h3 { font-family: var(--serif); font-size: 1.6rem; font-weight: 550; margin-bottom: 4px; }
-  .order-modal .routed { font-size: 0.88rem; color: var(--green-soft); font-weight: 700; margin-bottom: 18px; }
-  .order-modal label { display: block; font-size: 0.7rem; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: var(--green-soft); margin: 14px 0 4px; }
-  .order-modal input, .order-modal textarea { width: 100%; padding: 10px 14px; border: 1.5px solid var(--ink); border-radius: 12px; font-family: var(--sans); font-size: 0.95rem; background: #fff; color: var(--ink); outline: none; }
-  .order-modal input:focus, .order-modal textarea:focus { border-color: var(--poppy); }
-  .order-modal textarea { resize: vertical; min-height: 60px; }
-  .order-modal .stripe-note { margin-top: 16px; padding: 12px 16px; background: var(--paper-deep); border: 1px dashed var(--green-soft); border-radius: 12px; font-size: 0.82rem; color: color-mix(in srgb, var(--ink) 75%, transparent); }
-  .order-modal .modal-actions { display: flex; gap: 10px; margin-top: 20px; justify-content: flex-end; }
-
   footer { border-top: 1px solid var(--line); padding: 26px 0 40px; font-size: 0.85rem; color: color-mix(in srgb, var(--ink) 55%, transparent); }
   footer a { color: inherit; }
 
@@ -138,33 +127,6 @@
   <div class="wrap">© 2026 Flower Aggregator · prices update daily from each florist's own site · <a href="/">yo.florist</a></div>
 </footer>
 
-<dialog class="order-modal" id="order-modal">
-  <form id="order-form" method="dialog">
-    <h3>Send flowers</h3>
-    <div class="routed" id="order-routed"></div>
-    <div id="order-fields">
-      <label for="o-name">Your name</label>
-      <input id="o-name" type="text" required minlength="2" maxlength="120" autocomplete="name">
-      <label for="o-email">Email</label>
-      <input id="o-email" type="email" required autocomplete="email">
-      <label for="o-address">Recipient address</label>
-      <input id="o-address" type="text" required minlength="5" maxlength="500" placeholder="Street, city">
-      <label for="o-date">Delivery date</label>
-      <input id="o-date" type="date">
-      <label for="o-message">Card message (optional)</label>
-      <textarea id="o-message" maxlength="500" placeholder="Happy birthday!"></textarea>
-      <div class="stripe-note">
-        💳 <strong>Secure payment by Stripe.</strong> After placing the order you'll be
-        redirected to Stripe's checkout page to pay. Your florist is engaged the moment payment clears.
-      </div>
-      <div class="modal-actions">
-        <button type="button" class="btn ghost" id="order-cancel">Cancel</button>
-        <button type="submit" class="btn poppy" id="order-submit">Place order</button>
-      </div>
-    </div>
-  </form>
-</dialog>
-
 <script>
   const API = "https://api.yo.florist";
   const LIMIT = 48;
@@ -200,9 +162,9 @@
           <div class="row">
             <div class="price">${price}</div>
             <button class="order" type="button"
-              data-iso2="${esc(item.source ? item.iso2 || "" : "")}"
+              data-iso2="${esc(item.iso2 || "")}" data-website="${esc(item.source.website)}"
               data-florist="${esc(item.source.florist)}" data-city="${esc(item.source.city)}" data-country="${esc(item.source.country)}"
-              data-itemtitle="${esc(item.title)}" data-itemprice="${esc(item.price)}" data-itemcurrency="${esc(item.currency || "")}" data-itemurl="${esc(item.url || "")}">Order</button>
+              data-itemtitle="${esc(item.title)}" data-itemprice="${esc(item.price)}" data-itemcurrency="${esc(item.currency || "")}" data-itemurl="${esc(item.url || "")}" data-itemimage="${esc(item.image || "")}">Order</button>
           </div>
         </div>
       </article>`;
@@ -234,57 +196,16 @@
     }
   }
 
-  const modal = el("order-modal");
   function openModal(ctx) {
-    current = ctx;
-    const price = ctx.itemcurrency ? `${ctx.itemcurrency} ${ctx.itemprice}` : ctx.itemprice;
-    el("order-routed").textContent =
-      `“${ctx.itemtitle}” — ${price} · made & delivered by ${ctx.florist}, ${ctx.city} (sourced from their own site)`;
-    modal.showModal();
+    const p = new URLSearchParams({
+      iso2: ctx.iso2 || "", country: ctx.country || "", florist: ctx.florist || "",
+      fcity: ctx.city || "", website: ctx.website || "",
+      title: ctx.itemtitle || "", price: ctx.itemprice || "", currency: ctx.itemcurrency || "",
+    });
+    if (ctx.itemurl) p.set("itemurl", ctx.itemurl);
+    if (ctx.itemimage) p.set("image", ctx.itemimage);
+    window.location.href = `/checkout?${p.toString()}`;
   }
-  el("order-cancel").addEventListener("click", () => modal.close());
-
-  const today = new Date();
-  el("o-date").min = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-  el("o-date").addEventListener("click", function () { try { this.showPicker && this.showPicker(); } catch {} });
-
-  el("order-form").addEventListener("submit", async (ev) => {
-    ev.preventDefault();
-    const submit = el("order-submit");
-    submit.disabled = true;
-    submit.textContent = "Placing…";
-    try {
-      const r = await fetch(`${API}/v1/orders`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          country: current.country,
-          customer_name: el("o-name").value.trim(),
-          email: el("o-email").value.trim(),
-          address: el("o-address").value.trim(),
-          delivery_date: el("o-date").value || null,
-          message: el("o-message").value.trim() || null,
-          item_title: current.itemtitle,
-          item_price: parseFloat(current.itemprice) || null,
-          item_currency: current.itemcurrency || null,
-          item_url: current.itemurl || null,
-        }),
-      });
-      if (!r.ok) throw new Error(r.status);
-      const data = await r.json();
-      if (data.payment && data.payment.checkout_url) {
-        submit.textContent = "Redirecting to Stripe…";
-        window.location.href = data.payment.checkout_url;
-        return;
-      }
-      el("order-routed").textContent = `Order ${data.order_id} saved. ${data.payment && data.payment.note || ""}`;
-    } catch {
-      el("order-routed").textContent = "Couldn't place the order right now — please try again in a minute.";
-    } finally {
-      submit.disabled = false;
-      submit.textContent = "Place order";
-    }
-  });
 
   el("country-filter").addEventListener("change", (e) => { country = e.target.value; load(true); });
   el("more").addEventListener("click", () => load(false));

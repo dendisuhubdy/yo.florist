@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Checkout — Flower Aggregator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,300..900&family=Karla:ital,wght@0,300..800;1,300..800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #f6f1e6; --paper-deep: #efe7d6; --ink: #22301f; --green: #2f4a32;
+    --green-soft: #5c7a54; --poppy: #d94f2b; --poppy-deep: #b93d1e; --rose: #e9b4c0;
+    --line: rgba(34, 48, 31, 0.16);
+    --serif: "Fraunces", Georgia, serif; --sans: "Karla", "Helvetica Neue", sans-serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: var(--sans); background: var(--paper); color: var(--ink); line-height: 1.6; -webkit-font-smoothing: antialiased; }
+  ::selection { background: var(--poppy); color: var(--paper); }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 28px; }
+
+  header { position: sticky; top: 0; z-index: 100; background: color-mix(in srgb, var(--paper) 88%, transparent); backdrop-filter: blur(12px); border-bottom: 1px solid var(--line); }
+  .nav { display: flex; align-items: center; justify-content: space-between; padding: 18px 28px; max-width: 1080px; margin: 0 auto; }
+  .logo { display: flex; align-items: center; gap: 10px; font-family: var(--serif); font-weight: 600; font-size: 1.25rem; color: var(--ink); text-decoration: none; }
+  .logo svg { width: 30px; height: 30px; }
+  .nav .back { color: var(--ink); text-decoration: none; font-size: 0.92rem; font-weight: 600; }
+  .nav .back:hover { color: var(--poppy); }
+
+  h1 { font-family: var(--serif); font-size: clamp(1.9rem, 3.6vw, 2.7rem); font-weight: 500; letter-spacing: -0.02em; padding: 44px 0 6px; }
+  .sub { color: color-mix(in srgb, var(--ink) 68%, transparent); margin-bottom: 34px; }
+
+  .cols { display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 40px; align-items: start; padding-bottom: 90px; }
+
+  .panel { background: #fff; border: 1.5px solid var(--ink); border-radius: 20px; padding: 28px 30px; margin-bottom: 22px; }
+  .panel h2 { font-family: var(--serif); font-size: 1.3rem; font-weight: 550; margin-bottom: 6px; display: flex; align-items: baseline; gap: 10px; }
+  .panel h2 .n { font-size: 0.8rem; font-style: italic; color: var(--poppy); font-weight: 400; }
+  .panel .hint { font-size: 0.83rem; color: color-mix(in srgb, var(--ink) 60%, transparent); margin-bottom: 8px; }
+
+  label { display: block; font-size: 0.7rem; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: var(--green-soft); margin: 16px 0 5px; }
+  label .req { color: var(--poppy); }
+  input, textarea, select {
+    width: 100%; padding: 11px 14px; border: 1.5px solid var(--ink); border-radius: 12px;
+    font-family: var(--sans); font-size: 0.95rem; background: #fff; color: var(--ink); outline: none;
+  }
+  input:focus, textarea:focus, select:focus { border-color: var(--poppy); }
+  textarea { resize: vertical; min-height: 64px; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .addr-wrap { position: relative; }
+  .suggest {
+    position: absolute; top: calc(100% + 8px); left: 0; right: 0; background: #fff;
+    border: 1.5px solid var(--ink); border-radius: 14px; box-shadow: 6px 6px 0 var(--rose);
+    z-index: 60; display: none; max-height: 280px; overflow-y: auto;
+  }
+  .suggest.open { display: block; }
+  .suggest button {
+    display: block; width: 100%; padding: 11px 16px; border: none; background: none;
+    font-family: var(--sans); font-size: 0.9rem; color: var(--ink); text-align: left; cursor: pointer;
+  }
+  .suggest button + button { border-top: 1px solid var(--line); }
+  .suggest button:hover, .suggest button.active { background: var(--paper-deep); }
+  .geo-note { font-size: 0.75rem; color: color-mix(in srgb, var(--ink) 50%, transparent); margin-top: 6px; }
+
+  .summary { position: sticky; top: 92px; background: #fff; border: 1.5px solid var(--ink); border-radius: 20px; overflow: hidden; box-shadow: 8px 8px 0 var(--rose); }
+  .summary .pic { aspect-ratio: 16 / 10; background: var(--paper-deep); position: relative; }
+  .summary .pic img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .summary .pic .ph { position: absolute; inset: 0; display: grid; place-items: center; font-size: 3rem; }
+  .summary .body { padding: 22px 24px 24px; }
+  .summary .title { font-family: var(--serif); font-size: 1.25rem; font-weight: 550; line-height: 1.3; }
+  .summary .from { font-size: 0.83rem; color: color-mix(in srgb, var(--ink) 62%, transparent); margin-top: 6px; }
+  .summary .from a { color: inherit; }
+  .summary .from a:hover { color: var(--poppy); }
+  .totals { border-top: 1.5px dashed var(--line); margin-top: 16px; padding-top: 14px; font-size: 0.92rem; }
+  .totals .tr { display: flex; justify-content: space-between; padding: 3px 0; }
+  .totals .grand { font-family: var(--serif); font-size: 1.35rem; font-weight: 600; padding-top: 8px; }
+  .stripe-note { margin: 16px 24px 0; padding: 12px 16px; background: var(--paper-deep); border: 1px dashed var(--green-soft); border-radius: 12px; font-size: 0.8rem; color: color-mix(in srgb, var(--ink) 75%, transparent); }
+  .place-row { padding: 18px 24px 24px; }
+  .btn {
+    display: block; width: 100%; text-align: center; background: var(--poppy); color: #fff;
+    font-family: var(--sans); font-weight: 800; font-size: 1rem; letter-spacing: 0.02em;
+    padding: 15px 26px; border-radius: 100px; border: none; cursor: pointer; transition: background 0.2s, transform 0.2s;
+  }
+  .btn:hover { background: var(--poppy-deep); transform: translateY(-2px); }
+  .btn:disabled { opacity: 0.6; cursor: wait; transform: none; }
+  .error-line { color: var(--poppy-deep); font-size: 0.88rem; font-weight: 700; margin-top: 10px; text-align: center; min-height: 1.3em; }
+
+  @media (max-width: 880px) {
+    .cols { grid-template-columns: 1fr; }
+    .summary { position: static; order: -1; }
+    .row2 { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <nav class="nav">
+    <a class="logo" href="/">
+      <svg viewBox="0 0 40 40" fill="none" aria-hidden="true">
+        <circle cx="20" cy="13" r="6" fill="#d94f2b"/><circle cx="13" cy="20" r="6" fill="#e9b4c0"/>
+        <circle cx="27" cy="20" r="6" fill="#c8973e"/><circle cx="20" cy="20" r="4" fill="#22301f"/>
+        <path d="M20 24 C20 30 18 34 16 37 M20 24 C20 30 22 34 24 37" stroke="#2f4a32" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      Flower&nbsp;Aggregator
+    </a>
+    <a class="back" href="/flowers">← Keep browsing</a>
+  </nav>
+</header>
+
+<div class="wrap">
+  <h1>Checkout</h1>
+  <p class="sub">Delivered fresh by a local florist — never shipped in a box.</p>
+
+  <form class="cols" id="checkout-form" novalidate>
+    <div>
+      <div class="panel">
+        <h2><span class="n">01 —</span> Who's it going to?</h2>
+        <div class="row2">
+          <div>
+            <label for="r-name">Recipient name <span class="req">*</span></label>
+            <input id="r-name" type="text" required minlength="2" maxlength="120" autocomplete="off">
+          </div>
+          <div>
+            <label for="r-phone">Recipient phone <span class="req">*</span></label>
+            <input id="r-phone" type="tel" required minlength="5" maxlength="40" placeholder="For the delivery driver">
+          </div>
+        </div>
+        <label for="r-address">Address <span class="req">*</span></label>
+        <div class="addr-wrap">
+          <input id="r-address" type="text" required minlength="5" maxlength="500" placeholder="Start typing — street, area, city…" autocomplete="off" role="combobox" aria-expanded="false">
+          <div class="suggest" id="addr-suggest" role="listbox"></div>
+        </div>
+        <div class="geo-note" id="geo-note">Suggestions limited to <span id="geo-country"></span></div>
+        <div class="row2">
+          <div>
+            <label for="r-city">City</label>
+            <input id="r-city" type="text" maxlength="120">
+          </div>
+          <div>
+            <label for="r-postal">Postal code</label>
+            <input id="r-postal" type="text" maxlength="20">
+          </div>
+        </div>
+        <label for="r-instructions">Delivery instructions</label>
+        <input id="r-instructions" type="text" maxlength="500" placeholder="Gate code, floor, “leave with concierge”…">
+      </div>
+
+      <div class="panel">
+        <h2><span class="n">02 —</span> When?</h2>
+        <label for="r-date">Delivery date <span class="req">*</span></label>
+        <input id="r-date" type="date" required>
+      </div>
+
+      <div class="panel">
+        <h2><span class="n">03 —</span> From you</h2>
+        <div class="row2">
+          <div>
+            <label for="s-name">Your name <span class="req">*</span></label>
+            <input id="s-name" type="text" required minlength="2" maxlength="120" autocomplete="name">
+          </div>
+          <div>
+            <label for="s-email">Your email <span class="req">*</span></label>
+            <input id="s-email" type="email" required autocomplete="email">
+          </div>
+        </div>
+        <label for="s-message">Card message</label>
+        <textarea id="s-message" maxlength="500" placeholder="Written on the card, exactly as you type it"></textarea>
+      </div>
+    </div>
+
+    <aside class="summary">
+      <div class="pic"><div class="ph" aria-hidden="true">🌸</div><img id="sum-img" alt="" hidden></div>
+      <div class="body">
+        <div class="title" id="sum-title"></div>
+        <div class="from" id="sum-from"></div>
+        <div id="budget-wrap" hidden>
+          <label for="budget">Bouquet budget (USD)</label>
+          <select id="budget">
+            <option value="45">$45 — Petite</option>
+            <option value="65" selected>$65 — Classic</option>
+            <option value="95">$95 — Grand</option>
+            <option value="150">$150 — Statement</option>
+          </select>
+        </div>
+        <div class="totals">
+          <div class="tr"><span>Bouquet</span><span id="sum-price"></span></div>
+          <div class="tr"><span>Delivery</span><span>Included</span></div>
+          <div class="tr grand"><span>Total</span><span id="sum-total"></span></div>
+        </div>
+      </div>
+      <div class="stripe-note">💳 <strong>Secure payment by Stripe.</strong> You'll be redirected to Stripe to pay. The florist is engaged the moment payment clears.</div>
+      <div class="place-row">
+        <button class="btn" type="submit" id="place">Place order &amp; pay</button>
+        <div class="error-line" id="error-line"></div>
+      </div>
+    </aside>
+  </form>
+</div>
+
+<script>
+  const API = "https://api.yo.florist";
+  const P = new URLSearchParams(location.search);
+  const el = id => document.getElementById(id);
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+  const ctx = {
+    iso2: P.get("iso2") || "", country: P.get("country") || "", florist: P.get("florist") || "",
+    fcity: P.get("fcity") || "", website: P.get("website") || "",
+    title: P.get("title") || "", price: parseFloat(P.get("price")) || null,
+    currency: P.get("currency") || "", itemurl: P.get("itemurl") || "", image: P.get("image") || "",
+  };
+  if (!ctx.country) location.replace("/flowers");
+  const isItem = Boolean(ctx.title && ctx.price);
+
+  function money(v, cur) { return cur ? `${cur} ${Number(v).toFixed(2)}` : `$${Number(v).toFixed(2)}`; }
+  function refreshTotals() {
+    const amount = isItem ? ctx.price : parseFloat(el("budget").value);
+    const cur = isItem ? ctx.currency : "USD";
+    el("sum-price").textContent = money(amount, cur);
+    el("sum-total").textContent = money(amount, cur);
+  }
+
+  el("sum-title").textContent = isItem ? ctx.title : `Florist's choice bouquet — ${ctx.country}`;
+  el("sum-from").innerHTML = `made &amp; delivered by <a href="${esc(ctx.website)}" target="_blank" rel="noopener">${esc(ctx.florist)}</a> · ${esc(ctx.fcity)}, ${esc(ctx.country)} — sourced from their own site`;
+  if (ctx.image) { el("sum-img").src = ctx.image; el("sum-img").hidden = false; }
+  el("budget-wrap").hidden = isItem;
+  el("budget").addEventListener("change", refreshTotals);
+  el("geo-country").textContent = ctx.country;
+  refreshTotals();
+
+  const today = new Date();
+  el("r-date").min = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  if (P.get("date")) el("r-date").value = P.get("date");
+  el("r-date").addEventListener("click", function () { try { this.showPicker && this.showPicker(); } catch {} });
+
+  // ─── address autocomplete via our API (Google Places when enabled, OSM fallback) ───
+  const addr = el("r-address"), box = el("addr-suggest");
+  let debounceT = null, activeIdx = -1, chosen = null;
+
+  function closeBox() { box.classList.remove("open"); addr.setAttribute("aria-expanded", "false"); activeIdx = -1; }
+
+  async function pick(s) {
+    chosen = null;
+    if (s.fields) chosen = s;
+    else if (s.place_id) {
+      try {
+        const r = await fetch(`${API}/v1/geo/details?place_id=${encodeURIComponent(s.place_id)}`);
+        if (r.ok) chosen = await r.json();
+      } catch {}
+    }
+    addr.value = s.label;
+    if (chosen && chosen.fields) {
+      if (chosen.fields.city) el("r-city").value = chosen.fields.city;
+      if (chosen.fields.postal_code) el("r-postal").value = chosen.fields.postal_code;
+    }
+    closeBox();
+  }
+
+  async function query() {
+    const q = addr.value.trim();
+    if (q.length < 3) { closeBox(); return; }
+    try {
+      const r = await fetch(`${API}/v1/geo/autocomplete?q=${encodeURIComponent(q)}&country=${encodeURIComponent(ctx.iso2.toLowerCase())}`);
+      const d = await r.json();
+      if (!d.suggestions.length) { closeBox(); return; }
+      box.innerHTML = d.suggestions.map((s, i) =>
+        `<button type="button" role="option" data-i="${i}"${i === activeIdx ? ' class="active"' : ""}>${esc(s.label)}</button>`).join("");
+      box.querySelectorAll("button").forEach(b =>
+        b.addEventListener("mousedown", (e) => { e.preventDefault(); pick(d.suggestions[+b.dataset.i]); }));
+      box.classList.add("open");
+      addr.setAttribute("aria-expanded", "true");
+    } catch { closeBox(); }
+  }
+
+  addr.addEventListener("input", () => { chosen = null; activeIdx = -1; clearTimeout(debounceT); debounceT = setTimeout(query, 260); });
+  addr.addEventListener("blur", () => setTimeout(closeBox, 120));
+  addr.addEventListener("keydown", (e) => {
+    const opts = box.querySelectorAll("button");
+    if (!box.classList.contains("open") || !opts.length) return;
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      activeIdx = e.key === "ArrowDown" ? (activeIdx + 1) % opts.length : (activeIdx - 1 + opts.length) % opts.length;
+      opts.forEach((o, i) => o.classList.toggle("active", i === activeIdx));
+      opts[activeIdx].scrollIntoView({ block: "nearest" });
+    } else if (e.key === "Enter" && activeIdx >= 0) {
+      e.preventDefault(); opts[activeIdx].dispatchEvent(new Event("mousedown"));
+    } else if (e.key === "Escape") closeBox();
+  });
+
+  // ─── submit → order → Stripe ───
+  el("checkout-form").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const form = el("checkout-form");
+    if (!form.checkValidity()) { form.reportValidity(); return; }
+    const btn = el("place");
+    btn.disabled = true; btn.textContent = "Placing order…";
+    el("error-line").textContent = "";
+    const fullAddress = [addr.value.trim(), el("r-city").value.trim(), el("r-postal").value.trim(), ctx.country]
+      .filter(Boolean).join(", ");
+    try {
+      const r = await fetch(`${API}/v1/orders`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          country: ctx.iso2 || ctx.country,
+          customer_name: el("s-name").value.trim(),
+          email: el("s-email").value.trim(),
+          address: fullAddress,
+          delivery_date: el("r-date").value || null,
+          message: el("s-message").value.trim() || null,
+          budget_usd: isItem ? null : parseInt(el("budget").value, 10),
+          item_title: isItem ? ctx.title : null,
+          item_price: isItem ? ctx.price : null,
+          item_currency: isItem ? (ctx.currency || null) : null,
+          item_url: isItem ? (ctx.itemurl || null) : null,
+          recipient_name: el("r-name").value.trim(),
+          recipient_phone: el("r-phone").value.trim(),
+          street: addr.value.trim(),
+          city: el("r-city").value.trim() || null,
+          postal_code: el("r-postal").value.trim() || null,
+          delivery_instructions: el("r-instructions").value.trim() || null,
+          lat: chosen && chosen.fields ? chosen.fields.lat : null,
+          lng: chosen && chosen.fields ? chosen.fields.lng : null,
+        }),
+      });
+      if (!r.ok) {
+        const detail = await r.json().catch(() => ({}));
+        throw new Error(detail.detail || r.status);
+      }
+      const data = await r.json();
+      if (data.payment && data.payment.checkout_url) {
+        btn.textContent = "Redirecting to Stripe…";
+        window.location.href = data.payment.checkout_url;
+        return;
+      }
+      location.href = `/thanks.html?order=${encodeURIComponent(data.order_id)}`;
+    } catch (e) {
+      el("error-line").textContent = typeof e.message === "string" && e.message.length < 120
+        ? e.message : "Couldn't place the order — please try again in a minute.";
+      btn.disabled = false; btn.textContent = "Place order & pay";
+    }
+  });
+</script>
+</body>
+</html>

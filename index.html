@@ -297,74 +297,6 @@
   .visit-link.order { background: var(--poppy); }
   .visit-link.order:hover { background: var(--poppy-deep); }
 
-  /* order modal */
-  dialog.order-modal {
-    border: 1.5px solid var(--ink);
-    border-radius: 22px;
-    box-shadow: 10px 10px 0 var(--rose);
-    background: var(--paper);
-    color: var(--ink);
-    padding: 36px 34px;
-    width: min(480px, 92vw);
-    font-family: var(--sans);
-  }
-  dialog.order-modal::backdrop { background: rgba(34, 48, 31, 0.55); backdrop-filter: blur(3px); }
-  .order-modal h3 {
-    font-family: var(--serif);
-    font-size: 1.6rem;
-    font-weight: 550;
-    letter-spacing: -0.01em;
-    margin-bottom: 4px;
-  }
-  .order-modal .routed {
-    font-size: 0.88rem;
-    color: var(--green-soft);
-    font-weight: 700;
-    margin-bottom: 18px;
-  }
-  .order-modal label {
-    display: block;
-    font-size: 0.7rem;
-    font-weight: 800;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--green-soft);
-    margin: 14px 0 4px;
-  }
-  .order-modal input, .order-modal select, .order-modal textarea {
-    width: 100%;
-    padding: 10px 14px;
-    border: 1.5px solid var(--ink);
-    border-radius: 12px;
-    font-family: var(--sans);
-    font-size: 0.95rem;
-    background: #fff;
-    color: var(--ink);
-    outline: none;
-  }
-  .order-modal input:focus, .order-modal select:focus, .order-modal textarea:focus { border-color: var(--poppy); }
-  .order-modal textarea { resize: vertical; min-height: 60px; }
-  .order-modal .stripe-note {
-    margin-top: 16px;
-    padding: 12px 16px;
-    background: var(--paper-deep);
-    border: 1px dashed var(--green-soft);
-    border-radius: 12px;
-    font-size: 0.82rem;
-    color: color-mix(in srgb, var(--ink) 75%, transparent);
-  }
-  .order-modal .modal-actions { display: flex; gap: 10px; margin-top: 20px; justify-content: flex-end; }
-  .order-modal .success {
-    text-align: center;
-    padding: 12px 0;
-  }
-  .order-modal .success .oid {
-    font-family: var(--serif);
-    font-size: 1.7rem;
-    color: var(--poppy);
-    display: block;
-    margin: 10px 0;
-  }
   .compare-stack {
     display: flex;
     flex-direction: column;
@@ -1063,51 +995,6 @@
   </div>
 </footer>
 
-<dialog class="order-modal" id="order-modal">
-  <form id="order-form" method="dialog">
-    <h3>Send flowers</h3>
-    <div class="routed" id="order-routed"></div>
-    <div id="order-fields">
-      <label for="o-name">Your name</label>
-      <input id="o-name" type="text" required minlength="2" maxlength="120" autocomplete="name">
-      <label for="o-email">Email</label>
-      <input id="o-email" type="email" required autocomplete="email">
-      <label for="o-address">Recipient address</label>
-      <input id="o-address" type="text" required minlength="5" maxlength="500" placeholder="Street, city">
-      <label for="o-date">Delivery date</label>
-      <input id="o-date" type="date">
-      <div id="budget-wrap">
-      <label for="o-budget">Bouquet budget (USD, delivery included)</label>
-      <select id="o-budget">
-        <option value="45">$45 — Petite</option>
-        <option value="65" selected>$65 — Classic</option>
-        <option value="95">$95 — Grand</option>
-        <option value="150">$150 — Statement</option>
-      </select>
-      </div>
-      <label for="o-message">Card message (optional)</label>
-      <textarea id="o-message" maxlength="500" placeholder="Happy birthday!"></textarea>
-      <div class="stripe-note">
-        💳 <strong>Secure payment by Stripe.</strong> After placing the order you'll be
-        redirected to Stripe's checkout page to pay — cards, Apple&nbsp;Pay and Google&nbsp;Pay.
-        Your florist is engaged the moment payment clears.
-      </div>
-      <div class="modal-actions">
-        <button type="button" class="btn ghost" id="order-cancel">Cancel</button>
-        <button type="submit" class="btn poppy" id="order-submit">Place order</button>
-      </div>
-    </div>
-    <div class="success" id="order-success" hidden>
-      <p>Your order is in 🌸</p>
-      <span class="oid" id="order-oid"></span>
-      <p id="order-success-msg" style="font-size:0.9rem"></p>
-      <div class="modal-actions" style="justify-content:center">
-        <button type="button" class="btn" id="order-done">Done</button>
-      </div>
-    </div>
-  </form>
-</dialog>
-
 <script>
   const API = "https://api.yo.florist";
   const form = document.getElementById("hero-search");
@@ -1162,7 +1049,7 @@
           <div class="amount" style="font-size:1.15rem">${price}</div>
           <button class="visit-link order" type="button"
             data-iso2="${esc(m.iso2)}" data-florist="${esc(m.name)}" data-country="${esc(m.country)}" data-city="${esc(m.city)}" data-website="${esc(m.website)}"
-            data-itemtitle="${esc(item.title)}" data-itemprice="${esc(item.price)}" data-itemcurrency="${esc(item.currency || "")}" data-itemurl="${esc(item.url || "")}">Order&nbsp;🌸</button>
+            data-itemtitle="${esc(item.title)}" data-itemprice="${esc(item.price)}" data-itemcurrency="${esc(item.currency || "")}" data-itemurl="${esc(item.url || "")}" data-itemimage="${esc(item.image || "")}">Order&nbsp;🌸</button>
         </div>
       </div>`;
   }
@@ -1189,83 +1076,26 @@
       : `Your partner florist${data.count > 1 ? "s" : ""}${when}`;
     stack.innerHTML = cards.slice(0, 4).join("");
     stack.querySelectorAll("button.order").forEach(b =>
-      b.addEventListener("click", () => openOrderModal(b.dataset)));
+      b.addEventListener("click", () => goCheckout(b.dataset)));
   }
 
-  // ─── order modal (Stripe placeholder until keys go live) ───
-  const modal = document.getElementById("order-modal");
-  const orderForm = document.getElementById("order-form");
-  let orderCtx = null;
-
-  function openOrderModal(ctx) {
-    orderCtx = ctx;
-    const routed = document.getElementById("order-routed");
+  // ─── order buttons lead to the full checkout page ───
+  function goCheckout(ctx) {
+    const p = new URLSearchParams({
+      iso2: ctx.iso2 || "", country: ctx.country || "", florist: ctx.florist || "",
+      fcity: ctx.city || "", website: ctx.website || "",
+    });
     if (ctx.itemtitle) {
-      const price = ctx.itemcurrency ? `${ctx.itemcurrency} ${ctx.itemprice}` : ctx.itemprice;
-      routed.textContent =
-        `“${ctx.itemtitle}” — ${price} · made & delivered by ${ctx.florist}, ${ctx.city} (sourced from their own site)`;
-    } else {
-      routed.textContent = `Routed to ${ctx.florist} · ${ctx.city}, ${ctx.country}`;
+      p.set("title", ctx.itemtitle);
+      p.set("price", ctx.itemprice || "");
+      p.set("currency", ctx.itemcurrency || "");
+      if (ctx.itemurl) p.set("itemurl", ctx.itemurl);
+      if (ctx.itemimage) p.set("image", ctx.itemimage);
     }
-    document.getElementById("budget-wrap").hidden = Boolean(ctx.itemtitle);
-    document.getElementById("order-fields").hidden = false;
-    document.getElementById("order-success").hidden = true;
-    const heroDate = document.getElementById("date").value;
-    if (heroDate) document.getElementById("o-date").value = heroDate;
-    const heroAddr = document.getElementById("addr").value.trim();
-    if (heroAddr && !document.getElementById("o-address").value) {
-      document.getElementById("o-address").value = heroAddr;
-    }
-    modal.showModal();
+    const d = document.getElementById("date").value;
+    if (d) p.set("date", d);
+    window.location.href = `/checkout?${p.toString()}`;
   }
-
-  document.getElementById("order-cancel").addEventListener("click", () => modal.close());
-  document.getElementById("order-done").addEventListener("click", () => modal.close());
-
-  orderForm.addEventListener("submit", async (ev) => {
-    ev.preventDefault();
-    const submit = document.getElementById("order-submit");
-    submit.disabled = true;
-    submit.textContent = "Placing…";
-    try {
-      const r = await fetch(`${API}/v1/orders`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          country: orderCtx.iso2,
-          customer_name: document.getElementById("o-name").value.trim(),
-          email: document.getElementById("o-email").value.trim(),
-          address: document.getElementById("o-address").value.trim(),
-          delivery_date: document.getElementById("o-date").value || null,
-          budget_usd: orderCtx.itemtitle ? null : parseInt(document.getElementById("o-budget").value, 10),
-          message: document.getElementById("o-message").value.trim() || null,
-          item_title: orderCtx.itemtitle || null,
-          item_price: orderCtx.itemprice ? parseFloat(orderCtx.itemprice) : null,
-          item_currency: orderCtx.itemcurrency || null,
-          item_url: orderCtx.itemurl || null,
-        }),
-      });
-      if (!r.ok) throw new Error(r.status);
-      const data = await r.json();
-      if (data.payment && data.payment.checkout_url) {
-        submit.textContent = "Redirecting to Stripe…";
-        window.location.href = data.payment.checkout_url;
-        return;
-      }
-      document.getElementById("order-oid").textContent = data.order_id;
-      document.getElementById("order-success-msg").textContent =
-        `${data.routed_to.florist} in ${data.routed_to.city} has it from here. ` +
-        (data.payment.note || "");
-      document.getElementById("order-fields").hidden = true;
-      document.getElementById("order-success").hidden = false;
-    } catch {
-      document.getElementById("order-routed").textContent =
-        "Couldn't place the order right now — please try again in a minute.";
-    } finally {
-      submit.disabled = false;
-      submit.textContent = "Place order";
-    }
-  });
 
   // ─── destination autocomplete (fed by /v1/countries) ───
   const addrInput = document.getElementById("addr");
