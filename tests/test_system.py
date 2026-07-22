@@ -132,6 +132,30 @@ class TestSearch(unittest.TestCase):
         expect_http_error(self, 422, get_json, API + "/v1/search?q=a")
 
 
+class TestCatalog(unittest.TestCase):
+    def test_catalog_endpoint_shape(self):
+        _, _, data = get_json(API + "/v1/catalog?country=GB")
+        self.assertEqual(data["iso2"], "GB")
+        self.assertTrue(data["florist"])
+        self.assertIsInstance(data["items"], list)
+        self.assertEqual(data["count"], len(data["items"]))
+        # every item must honestly attribute its source florist
+        for item in data["items"]:
+            self.assertIn("source", item)
+            self.assertTrue(item["source"]["florist"])
+            self.assertTrue(item["source"]["website"])
+            self.assertIsNotNone(item.get("price"))
+
+    def test_catalog_unknown_country_404(self):
+        expect_http_error(self, 404, get_json, API + "/v1/catalog?country=Atlantis")
+
+    def test_search_matches_carry_items_key(self):
+        _, _, data = get_json(API + "/v1/search?q=Indonesia")
+        self.assertGreaterEqual(data["count"], 1)
+        self.assertIn("items", data["matches"][0])
+        self.assertIsInstance(data["matches"][0]["items"], list)
+
+
 class TestOrders(unittest.TestCase):
     """Purchase-order placeholder — Stripe checkout activates once keys land."""
 
@@ -162,6 +186,22 @@ class TestOrders(unittest.TestCase):
         # status endpoint must not leak PII
         for pii in ("email", "address", "customer_name", "message"):
             self.assertNotIn(pii, fetched)
+
+    def test_create_order_with_catalog_item(self):
+        payload = dict(
+            self.ORDER,
+            budget_usd=None,
+            item_title="Test Bouquet — Peony Dream",
+            item_price=59.5,
+            item_currency="USD",
+            item_url="https://example.com/products/peony-dream",
+        )
+        status, data = post_json(API + "/v1/orders", payload)
+        self.assertEqual(status, 201)
+        self.assertEqual(data["item"]["title"], "Test Bouquet — Peony Dream")
+        self.assertEqual(data["item"]["price"], 59.5)
+        self.assertTrue(data["item"]["fulfilled_by"])
+        self.assertEqual(data["payment"]["mode"], "placeholder")
 
     def test_order_unknown_country_404(self):
         bad = dict(self.ORDER, country="Atlantis")

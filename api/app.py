@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 
 DATA_FILE = Path("/opt/yoflorist/florists.json")
 DB_FILE = Path("/opt/yoflorist/data/orders.db")
+CATALOG_FILE = Path("/opt/yoflorist/data/catalog.json")  # written daily by scraper.py
 
 # TODO(stripe): set STRIPE_SECRET_KEY in the systemd unit once the Stripe
 # account is approved; until then orders are stored as pending_payment and
@@ -50,6 +51,21 @@ def _load() -> list[dict]:
             _cache["data"] = [e for e in json.load(f) if e.get("name")]
         _cache["mtime"] = mtime
     return _cache["data"]
+
+
+_cat_cache = {"mtime": None, "data": {}}
+
+
+def _catalog() -> dict:
+    """items-by-iso2 from the daily scrape; empty until the first run lands."""
+    if not CATALOG_FILE.exists():
+        return {}
+    mtime = CATALOG_FILE.stat().st_mtime
+    if _cat_cache["mtime"] != mtime:
+        with CATALOG_FILE.open() as f:
+            _cat_cache["data"] = json.load(f)
+        _cat_cache["mtime"] = mtime
+    return _cat_cache["data"]
 
 
 def _norm(s: str | None) -> str:
@@ -108,8 +124,40 @@ def search(
         )
         if hit and e["iso2"] not in seen:
             seen.add(e["iso2"])
-            matches.append(e)
+            matches.append({**e, "items": _items_for(e, limit=3)})
     return {"query": q, "date": date, "count": len(matches), "matches": matches}
+
+
+def _items_for(florist: dict, limit: int | None = None) -> list[dict]:
+    """Catalog items for a florist, each carrying an honest source attribution."""
+    items = (_catalog().get("items") or {}).get(florist["iso2"], [])
+    if limit is not None:
+        items = items[:limit]
+    source = {
+        "florist": florist["name"],
+        "website": florist["website"],
+        "city": florist["city"],
+        "country": florist["country"],
+    }
+    return [{**it, "source": source} for it in items]
+
+
+@app.get("/v1/catalog", tags=["catalog"], summary="Scraped bouquet catalog for a country's partner florist")
+def catalog(
+    country: str = Query(..., description="ISO-3166 alpha-2 code or country name"),
+):
+    florist = _find_florist(country)
+    cat = _catalog()
+    items = _items_for(florist)
+    return {
+        "iso2": florist["iso2"],
+        "country": florist["country"],
+        "florist": florist["name"],
+        "florist_website": florist["website"],
+        "generated_at": cat.get("generated_at"),
+        "count": len(items),
+        "items": items,
+    }
 
 
 # ─── orders (Stripe payment pending account approval) ───
@@ -133,6 +181,16 @@ def _db() -> sqlite3.Connection:
             message TEXT
         )"""
     )
+    # migrate pre-catalog databases in place
+    have = {r[1] for r in conn.execute("PRAGMA table_info(orders)")}
+    for col, typ in (
+        ("item_title", "TEXT"),
+        ("item_price", "REAL"),
+        ("item_currency", "TEXT"),
+        ("item_url", "TEXT"),
+    ):
+        if col not in have:
+            conn.execute(f"ALTER TABLE orders ADD COLUMN {col} {typ}")
     return conn
 
 
@@ -176,8 +234,13 @@ class OrderIn(BaseModel):
     email: str = Field(...)
     address: str = Field(..., min_length=5, max_length=500, description="Recipient delivery address")
     delivery_date: str | None = Field(None, description="Requested delivery date, e.g. 2026-07-28")
-    budget_usd: int | None = Field(None, ge=10, le=10000, description="Bouquet budget in USD, delivery included")
+    budget_usd: int | None = Field(None, ge=10, le=10000, description="Bouquet budget in USD when ordering without a catalog item")
     message: str | None = Field(None, max_length=500, description="Card message for the recipient")
+    # catalog-item orders: which scraped product the customer chose
+    item_title: str | None = Field(None, max_length=300)
+    item_price: float | None = Field(None, ge=0)
+    item_currency: str | None = Field(None, max_length=8)
+    item_url: str | None = Field(None, max_length=1000, description="Product page on the source florist's own site")
 
 
 @app.post("/v1/orders", status_code=201, tags=["orders"], summary="Create a purchase order (payment activates when Stripe is approved)")
@@ -188,7 +251,10 @@ def create_order(order: OrderIn):
     oid = "YF-" + uuid.uuid4().hex[:8].upper()
     with _db() as conn:
         conn.execute(
-            "INSERT INTO orders VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO orders (id, created_at, status, iso2, florist, customer_name,"
+            " email, address, delivery_date, budget_usd, message,"
+            " item_title, item_price, item_currency, item_url)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (
                 oid,
                 datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -201,8 +267,21 @@ def create_order(order: OrderIn):
                 order.delivery_date,
                 order.budget_usd,
                 order.message,
+                order.item_title,
+                order.item_price,
+                order.item_currency,
+                order.item_url,
             ),
         )
+    item = None
+    if order.item_title:
+        item = {
+            "title": order.item_title,
+            "price": order.item_price,
+            "currency": order.item_currency,
+            "url": order.item_url,
+            "fulfilled_by": florist["name"],
+        }
     return {
         "order_id": oid,
         "status": "pending_payment",
@@ -211,7 +290,9 @@ def create_order(order: OrderIn):
             "country": florist["country"],
             "florist": florist["name"],
             "city": florist["city"],
+            "website": florist["website"],
         },
+        "item": item,
         "payment": _payment_block(oid),
     }
 
