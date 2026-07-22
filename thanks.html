@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Thank you — Flower Aggregator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,300..900&family=Karla:ital,wght@0,300..800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #f6f1e6; --ink: #22301f; --green: #2f4a32; --green-soft: #5c7a54;
+    --poppy: #d94f2b; --rose: #e9b4c0;
+    --serif: "Fraunces", Georgia, serif; --sans: "Karla", sans-serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: var(--sans); background: var(--paper); color: var(--ink);
+    min-height: 100vh; display: grid; place-items: center; padding: 24px;
+  }
+  .card {
+    background: #fff; border: 1.5px solid var(--ink); border-radius: 22px;
+    box-shadow: 10px 10px 0 var(--rose); padding: 48px 44px;
+    max-width: 520px; text-align: center;
+  }
+  h1 { font-family: var(--serif); font-weight: 550; font-size: 2rem; letter-spacing: -0.02em; margin: 14px 0 8px; }
+  .oid { font-family: var(--serif); font-style: italic; font-size: 1.3rem; color: var(--poppy); }
+  p { color: color-mix(in srgb, var(--ink) 75%, transparent); margin-top: 12px; font-size: 0.98rem; }
+  .status {
+    display: inline-block; margin-top: 18px; padding: 6px 16px; border-radius: 100px;
+    font-size: 0.75rem; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase;
+  }
+  .status.paid { background: var(--green); color: var(--paper); }
+  .status.pending { background: var(--rose); color: var(--ink); }
+  a.home {
+    display: inline-block; margin-top: 28px; background: var(--green); color: var(--paper);
+    font-weight: 700; font-size: 0.92rem; padding: 12px 26px; border-radius: 100px;
+    text-decoration: none; transition: background 0.2s;
+  }
+  a.home:hover { background: var(--poppy); }
+</style>
+</head>
+<body>
+<div class="card">
+  <div style="font-size:2.4rem">🌸</div>
+  <h1 id="headline">Checking your order…</h1>
+  <div class="oid" id="oid"></div>
+  <p id="detail">One moment.</p>
+  <span class="status pending" id="status" hidden></span><br>
+  <a class="home" href="/">Back to Flower Aggregator</a>
+</div>
+<script>
+  const API = "https://api.yo.florist";
+  const oid = new URLSearchParams(location.search).get("order");
+  const el = id => document.getElementById(id);
+  if (oid) el("oid").textContent = oid;
+
+  async function check(attempt) {
+    if (!oid) { el("headline").textContent = "Thank you!"; el("detail").textContent = "Your payment was received."; return; }
+    try {
+      const r = await fetch(`${API}/v1/orders/${encodeURIComponent(oid)}`);
+      if (!r.ok) throw new Error(r.status);
+      const o = await r.json();
+      const s = el("status");
+      s.hidden = false;
+      if (o.status === "paid") {
+        el("headline").textContent = "Payment received — flowers are go!";
+        el("detail").textContent =
+          `${o.florist} is being engaged to make and deliver your order` +
+          (o.delivery_date ? ` for ${o.delivery_date}.` : ".") +
+          " A receipt is on its way to your email.";
+        s.textContent = "Paid";
+        s.className = "status paid";
+      } else {
+        el("headline").textContent = "Almost there";
+        el("detail").textContent = "Your payment hasn't been confirmed yet — this can take a few seconds.";
+        s.textContent = "Payment pending";
+        s.className = "status pending";
+        if (attempt < 10) setTimeout(() => check(attempt + 1), 3000);
+      }
+    } catch {
+      el("headline").textContent = "Thank you!";
+      el("detail").textContent = "We couldn't load the order status right now, but your order reference is above — keep it handy.";
+    }
+  }
+  check(0);
+</script>
+</body>
+</html>

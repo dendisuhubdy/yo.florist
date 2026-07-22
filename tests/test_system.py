@@ -55,6 +55,11 @@ class TestLandingPage(unittest.TestCase):
         self.assertIn('id="hero-search"', html)
         self.assertIn('id="order-modal"', html)
 
+    def test_thanks_page_serves(self):
+        status, _, body = get(SITE + "/thanks.html?order=YF-TEST")
+        self.assertEqual(status, 200)
+        self.assertIn("Thank you", body.decode())
+
     def test_http_redirects_to_https(self):
         req = urllib.request.Request(SITE.replace("https://", "http://") + "/")
 
@@ -169,22 +174,28 @@ class TestOrders(unittest.TestCase):
         "message": "system test order",
     }
 
+    def assert_payment_contract(self, payment):
+        """Live mode must hand back a Stripe checkout URL; placeholder must not."""
+        self.assertEqual(payment["provider"], "stripe")
+        self.assertIn(payment["mode"], ("live", "placeholder"))
+        if payment["mode"] == "live":
+            self.assertTrue(payment["checkout_url"].startswith("https://checkout.stripe.com/"))
+        else:
+            self.assertIsNone(payment["checkout_url"])
+
     def test_create_and_fetch_order(self):
         status, data = post_json(API + "/v1/orders", self.ORDER)
         self.assertEqual(status, 201)
         self.assertTrue(data["order_id"].startswith("YF-"))
         self.assertEqual(data["status"], "pending_payment")
         self.assertEqual(data["routed_to"]["iso2"], "ID")
-        # Stripe placeholder contract: no charge, no checkout URL yet
-        self.assertEqual(data["payment"]["provider"], "stripe")
-        self.assertEqual(data["payment"]["mode"], "placeholder")
-        self.assertIsNone(data["payment"]["checkout_url"])
+        self.assert_payment_contract(data["payment"])
 
         _, _, fetched = get_json(API + f"/v1/orders/{data['order_id']}")
         self.assertEqual(fetched["id"], data["order_id"])
         self.assertEqual(fetched["status"], "pending_payment")
-        # status endpoint must not leak PII
-        for pii in ("email", "address", "customer_name", "message"):
+        # status endpoint must not leak PII or Stripe session internals
+        for pii in ("email", "address", "customer_name", "message", "stripe_session_id"):
             self.assertNotIn(pii, fetched)
 
     def test_create_order_with_catalog_item(self):
@@ -201,7 +212,7 @@ class TestOrders(unittest.TestCase):
         self.assertEqual(data["item"]["title"], "Test Bouquet — Peony Dream")
         self.assertEqual(data["item"]["price"], 59.5)
         self.assertTrue(data["item"]["fulfilled_by"])
-        self.assertEqual(data["payment"]["mode"], "placeholder")
+        self.assert_payment_contract(data["payment"])
 
     def test_order_unknown_country_404(self):
         bad = dict(self.ORDER, country="Atlantis")

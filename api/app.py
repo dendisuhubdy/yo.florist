@@ -8,6 +8,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+import requests
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
@@ -17,10 +18,16 @@ DATA_FILE = Path("/opt/yoflorist/florists.json")
 DB_FILE = Path("/opt/yoflorist/data/orders.db")
 CATALOG_FILE = Path("/opt/yoflorist/data/catalog.json")  # written daily by scraper.py
 
-# TODO(stripe): set STRIPE_SECRET_KEY in the systemd unit once the Stripe
-# account is approved; until then orders are stored as pending_payment and
-# no payment session is created.
-STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY", "")
+# Live Stripe key comes from /etc/yoflorist/stripe.env via the systemd unit.
+# When unset, orders fall back to the pre-launch placeholder payment block.
+STRIPE_SECRET_KEY = os.environ.get("FLOWER_STRIPE_SECRET_KEY", "")
+STRIPE_API = "https://api.stripe.com/v1"
+SITE_URL = "https://yo.florist"
+# currencies Stripe treats as having no minor unit (charge amounts are whole)
+ZERO_DECIMAL = {
+    "bif", "clp", "djf", "gnf", "jpy", "kmf", "krw", "mga",
+    "pyg", "rwf", "ugx", "vnd", "vuv", "xaf", "xof", "xpf",
+}
 
 app = FastAPI(
     title="Flower Aggregator API",
@@ -181,13 +188,15 @@ def _db() -> sqlite3.Connection:
             message TEXT
         )"""
     )
-    # migrate pre-catalog databases in place
+    # migrate older databases in place
     have = {r[1] for r in conn.execute("PRAGMA table_info(orders)")}
     for col, typ in (
         ("item_title", "TEXT"),
         ("item_price", "REAL"),
         ("item_currency", "TEXT"),
         ("item_url", "TEXT"),
+        ("stripe_session_id", "TEXT"),
+        ("checkout_url", "TEXT"),
     ):
         if col not in have:
             conn.execute(f"ALTER TABLE orders ADD COLUMN {col} {typ}")
@@ -202,28 +211,84 @@ def _find_florist(country: str) -> dict:
     raise HTTPException(status_code=404, detail=f"No partner florist found for {country!r}")
 
 
-def _payment_block(order_id: str) -> dict:
-    if STRIPE_SECRET_KEY:
-        # TODO(stripe): once live keys are configured, create a real Checkout
-        # Session here and return its URL:
-        #   session = stripe.checkout.Session.create(
-        #       mode="payment",
-        #       line_items=[...bouquet + delivery, from the routed florist...],
-        #       metadata={"order_id": order_id},
-        #       success_url="https://yo.florist/thanks?order={CHECKOUT_SESSION_ID}",
-        #       cancel_url="https://yo.florist/",
-        #   )
-        #   return {"provider": "stripe", "mode": "live", "checkout_url": session.url}
-        raise HTTPException(status_code=501, detail="Stripe key present but checkout not wired yet")
+def _placeholder_payment() -> dict:
     return {
         "provider": "stripe",
         "mode": "placeholder",
         "checkout_url": None,
         "note": (
-            "Stripe account pending approval — no charge has been made. "
+            "Payments are not yet enabled — no charge has been made. "
             "A secure payment link will be emailed when payments go live."
         ),
     }
+
+
+def _create_checkout(oid: str, order: "OrderIn", florist: dict) -> tuple[str, str] | None:
+    """Create a Stripe hosted-Checkout session; returns (session_id, url) or None."""
+    if order.item_title and order.item_price:
+        amount = order.item_price
+        currency = (order.item_currency or "usd").lower()
+        name = order.item_title
+        desc = f"Made & delivered by {florist['name']}, {florist['city']} — sourced from their own catalog"
+    else:
+        amount = float(order.budget_usd or 65)
+        currency = "usd"
+        name = f"Bouquet by {florist['name']} ({florist['city']}, {florist['country']})"
+        desc = "Florist's choice bouquet, delivery included"
+    unit_amount = int(round(amount)) if currency in ZERO_DECIMAL else int(round(amount * 100))
+    payload = {
+        "mode": "payment",
+        # explicit: the account has no per-currency dashboard config yet, and
+        # without this Stripe rejects sessions ("No valid payment method types")
+        "payment_method_types[0]": "card",
+        "customer_email": order.email,
+        "client_reference_id": oid,
+        "metadata[order_id]": oid,
+        "metadata[florist]": florist["name"],
+        "metadata[iso2]": florist["iso2"],
+        "line_items[0][quantity]": "1",
+        "line_items[0][price_data][currency]": currency,
+        "line_items[0][price_data][unit_amount]": str(unit_amount),
+        "line_items[0][price_data][product_data][name]": name[:250],
+        "line_items[0][price_data][product_data][description]": desc[:250],
+        "success_url": f"{SITE_URL}/thanks.html?order={oid}",
+        "cancel_url": f"{SITE_URL}/?payment=cancelled",
+    }
+    try:
+        r = requests.post(
+            f"{STRIPE_API}/checkout/sessions",
+            auth=(STRIPE_SECRET_KEY, ""),
+            data=payload,
+            timeout=20,
+        )
+        if not r.ok:
+            print(f"stripe checkout failed for {oid}: {r.status_code} {r.text[:300]}", flush=True)
+            return None
+        js = r.json()
+        return js["id"], js["url"]
+    except requests.RequestException as exc:
+        print(f"stripe checkout error for {oid}: {exc}", flush=True)
+        return None
+
+
+def _refresh_payment_status(row: dict) -> str:
+    """Poll Stripe for a pending order's session; mark paid when it is."""
+    status = row["status"]
+    if status != "pending_payment" or not STRIPE_SECRET_KEY or not row.get("stripe_session_id"):
+        return status
+    try:
+        r = requests.get(
+            f"{STRIPE_API}/checkout/sessions/{row['stripe_session_id']}",
+            auth=(STRIPE_SECRET_KEY, ""),
+            timeout=15,
+        )
+        if r.ok and r.json().get("payment_status") == "paid":
+            with _db() as conn:
+                conn.execute("UPDATE orders SET status='paid' WHERE id=?", (row["id"],))
+            return "paid"
+    except requests.RequestException:
+        pass
+    return status
 
 
 class OrderIn(BaseModel):
@@ -249,12 +314,18 @@ def create_order(order: OrderIn):
         raise HTTPException(status_code=422, detail="Invalid email address")
     florist = _find_florist(order.country)
     oid = "YF-" + uuid.uuid4().hex[:8].upper()
+    session_id, checkout_url = None, None
+    if STRIPE_SECRET_KEY:
+        created = _create_checkout(oid, order, florist)
+        if created:
+            session_id, checkout_url = created
     with _db() as conn:
         conn.execute(
             "INSERT INTO orders (id, created_at, status, iso2, florist, customer_name,"
             " email, address, delivery_date, budget_usd, message,"
-            " item_title, item_price, item_currency, item_url)"
-            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " item_title, item_price, item_currency, item_url,"
+            " stripe_session_id, checkout_url)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (
                 oid,
                 datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -271,6 +342,8 @@ def create_order(order: OrderIn):
                 order.item_price,
                 order.item_currency,
                 order.item_url,
+                session_id,
+                checkout_url,
             ),
         )
     item = None
@@ -281,6 +354,22 @@ def create_order(order: OrderIn):
             "currency": order.item_currency,
             "url": order.item_url,
             "fulfilled_by": florist["name"],
+        }
+    if not STRIPE_SECRET_KEY:
+        payment = _placeholder_payment()
+    elif checkout_url:
+        payment = {
+            "provider": "stripe",
+            "mode": "live",
+            "checkout_url": checkout_url,
+            "note": "Complete payment on Stripe's secure page — the florist is engaged once payment clears.",
+        }
+    else:
+        payment = {
+            "provider": "stripe",
+            "mode": "error",
+            "checkout_url": None,
+            "note": "The payment session couldn't be created — the order is saved and we'll email you a payment link.",
         }
     return {
         "order_id": oid,
@@ -293,7 +382,7 @@ def create_order(order: OrderIn):
             "website": florist["website"],
         },
         "item": item,
-        "payment": _payment_block(oid),
+        "payment": payment,
     }
 
 
@@ -304,8 +393,14 @@ def get_order(order_id: str):
     if row is None:
         raise HTTPException(status_code=404, detail=f"Unknown order {order_id!r}")
     o = dict(row)
-    o["payment"] = _payment_block(o["id"])
-    # the customer-facing status endpoint doesn't echo back PII
-    for k in ("email", "address", "customer_name", "message"):
-        o.pop(k)
+    o["status"] = _refresh_payment_status(o)
+    o["payment"] = {
+        "provider": "stripe",
+        "mode": "live" if STRIPE_SECRET_KEY else "placeholder",
+        # only hand the checkout link back while payment is still owed
+        "checkout_url": o["checkout_url"] if o["status"] == "pending_payment" else None,
+    }
+    # the customer-facing status endpoint doesn't echo back PII or session ids
+    for k in ("email", "address", "customer_name", "message", "stripe_session_id", "checkout_url"):
+        o.pop(k, None)
     return o

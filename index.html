@@ -1046,9 +1046,9 @@
       <label for="o-message">Card message (optional)</label>
       <textarea id="o-message" maxlength="500" placeholder="Happy birthday!"></textarea>
       <div class="stripe-note">
-        💳 <strong>Card payments launch soon.</strong> Our Stripe account is in review —
-        placing this order reserves it with the florist and <strong>nothing is charged today</strong>.
-        We'll email you a secure payment link the moment payments go live.
+        💳 <strong>Secure payment by Stripe.</strong> After placing the order you'll be
+        redirected to Stripe's checkout page to pay — cards, Apple&nbsp;Pay and Google&nbsp;Pay.
+        Your florist is engaged the moment payment clears.
       </div>
       <div class="modal-actions">
         <button type="button" class="btn ghost" id="order-cancel">Cancel</button>
@@ -1205,6 +1205,11 @@
       });
       if (!r.ok) throw new Error(r.status);
       const data = await r.json();
+      if (data.payment && data.payment.checkout_url) {
+        submit.textContent = "Redirecting to Stripe…";
+        window.location.href = data.payment.checkout_url;
+        return;
+      }
       document.getElementById("order-oid").textContent = data.order_id;
       document.getElementById("order-success-msg").textContent =
         `${data.routed_to.florist} in ${data.routed_to.city} has it from here. ` +
