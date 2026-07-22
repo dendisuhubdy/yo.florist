@@ -100,7 +100,10 @@ def countries():
     data = sorted(_load(), key=lambda e: e["country"])
     return {
         "count": len(data),
-        "countries": [{"iso2": e["iso2"], "country": e["country"]} for e in data],
+        "countries": [
+            {"iso2": e["iso2"], "country": e["country"], "city": e.get("city")}
+            for e in data
+        ],
     }
 
 
@@ -149,21 +152,37 @@ def _items_for(florist: dict, limit: int | None = None) -> list[dict]:
     return [{**it, "source": source} for it in items]
 
 
-@app.get("/v1/catalog", tags=["catalog"], summary="Scraped bouquet catalog for a country's partner florist")
+@app.get("/v1/catalog", tags=["catalog"], summary="Scraped bouquet catalog — one country's, or browse everything")
 def catalog(
-    country: str = Query(..., description="ISO-3166 alpha-2 code or country name"),
+    country: str | None = Query(None, description="ISO-3166 alpha-2 code or country name; omit to browse the full catalog"),
+    limit: int = Query(48, ge=1, le=200, description="Browse mode: page size"),
+    offset: int = Query(0, ge=0, description="Browse mode: page start"),
 ):
-    florist = _find_florist(country)
     cat = _catalog()
-    items = _items_for(florist)
+    if country:
+        florist = _find_florist(country)
+        items = _items_for(florist)
+        return {
+            "iso2": florist["iso2"],
+            "country": florist["country"],
+            "florist": florist["name"],
+            "florist_website": florist["website"],
+            "generated_at": cat.get("generated_at"),
+            "count": len(items),
+            "items": items,
+        }
+    by_iso = {e["iso2"]: e for e in _load()}
+    everything = []
+    for iso2 in sorted(cat.get("items") or {}, key=lambda k: by_iso.get(k, {}).get("country", "")):
+        florist = by_iso.get(iso2)
+        if florist:
+            everything.extend({**it, "iso2": iso2} for it in _items_for(florist))
     return {
-        "iso2": florist["iso2"],
-        "country": florist["country"],
-        "florist": florist["name"],
-        "florist_website": florist["website"],
         "generated_at": cat.get("generated_at"),
-        "count": len(items),
-        "items": items,
+        "total": len(everything),
+        "offset": offset,
+        "limit": limit,
+        "items": everything[offset : offset + limit],
     }
 
 

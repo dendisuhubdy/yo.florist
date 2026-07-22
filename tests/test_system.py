@@ -60,6 +60,11 @@ class TestLandingPage(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIn("Thank you", body.decode())
 
+    def test_flowers_catalog_page_serves(self):
+        status, _, body = get(SITE + "/flowers")
+        self.assertEqual(status, 200)
+        self.assertIn("Real bouquets", body.decode())
+
     def test_http_redirects_to_https(self):
         req = urllib.request.Request(SITE.replace("https://", "http://") + "/")
 
@@ -153,6 +158,28 @@ class TestCatalog(unittest.TestCase):
 
     def test_catalog_unknown_country_404(self):
         expect_http_error(self, 404, get_json, API + "/v1/catalog?country=Atlantis")
+
+    def test_catalog_browse_all(self):
+        _, _, data = get_json(API + "/v1/catalog?limit=5")
+        self.assertGreaterEqual(data["total"], 1)
+        self.assertLessEqual(len(data["items"]), 5)
+        for item in data["items"]:
+            self.assertIn("iso2", item)
+            self.assertIn("source", item)
+            self.assertIsNotNone(item.get("price"))
+
+    def test_catalog_browse_pagination(self):
+        _, _, p1 = get_json(API + "/v1/catalog?limit=2&offset=0")
+        _, _, p2 = get_json(API + "/v1/catalog?limit=2&offset=2")
+        if p1["total"] > 4:
+            self.assertNotEqual(
+                [i["title"] for i in p1["items"]],
+                [i["title"] for i in p2["items"]],
+            )
+
+    def test_countries_include_city_for_autocomplete(self):
+        _, _, data = get_json(API + "/v1/countries")
+        self.assertIn("city", data["countries"][0])
 
     def test_search_matches_carry_items_key(self):
         _, _, data = get_json(API + "/v1/search?q=Indonesia")

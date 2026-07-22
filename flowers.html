@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bouquets — Flower Aggregator</title>
+<meta name="description" content="Browse real bouquets with real prices from vetted local florists around the world — refreshed daily, ordered in one checkout.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,300..900&family=Karla:ital,wght@0,300..800;1,300..800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #f6f1e6; --paper-deep: #efe7d6; --ink: #22301f; --green: #2f4a32;
+    --green-soft: #5c7a54; --poppy: #d94f2b; --poppy-deep: #b93d1e; --rose: #e9b4c0;
+    --gold: #c8973e; --line: rgba(34, 48, 31, 0.16);
+    --serif: "Fraunces", Georgia, serif; --sans: "Karla", "Helvetica Neue", sans-serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: var(--sans); background: var(--paper); color: var(--ink); line-height: 1.6; -webkit-font-smoothing: antialiased; }
+  ::selection { background: var(--poppy); color: var(--paper); }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 28px; }
+
+  header { position: sticky; top: 0; z-index: 100; background: color-mix(in srgb, var(--paper) 88%, transparent); backdrop-filter: blur(12px); border-bottom: 1px solid var(--line); }
+  .nav { display: flex; align-items: center; justify-content: space-between; padding: 18px 28px; max-width: 1180px; margin: 0 auto; }
+  .logo { display: flex; align-items: center; gap: 10px; font-family: var(--serif); font-weight: 600; font-size: 1.25rem; color: var(--ink); text-decoration: none; }
+  .logo svg { width: 30px; height: 30px; }
+  .nav-links { display: flex; gap: 32px; align-items: center; }
+  .nav-links a { color: var(--ink); text-decoration: none; font-size: 0.92rem; font-weight: 500; transition: color 0.2s; }
+  .nav-links a:hover { color: var(--poppy); }
+  .btn { display: inline-block; background: var(--green); color: var(--paper); font-family: var(--sans); font-weight: 700; font-size: 0.92rem; padding: 12px 26px; border-radius: 100px; text-decoration: none; border: none; cursor: pointer; transition: background 0.2s, transform 0.2s; }
+  .btn:hover { background: var(--poppy); transform: translateY(-2px); }
+  .btn.poppy { background: var(--poppy); }
+  .btn.poppy:hover { background: var(--poppy-deep); }
+  .btn.ghost { background: transparent; color: var(--ink); border: 1.5px solid var(--ink); }
+  .btn.ghost:hover { background: var(--ink); color: var(--paper); }
+
+  .page-head { padding: 64px 0 28px; }
+  .kicker { display: inline-flex; align-items: center; gap: 8px; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: var(--poppy); margin-bottom: 18px; }
+  .kicker::before { content: ""; width: 28px; height: 1.5px; background: var(--poppy); }
+  h1 { font-family: var(--serif); font-size: clamp(2.2rem, 4.5vw, 3.4rem); font-weight: 500; letter-spacing: -0.02em; line-height: 1.05; margin-bottom: 14px; }
+  h1 em { font-style: italic; font-weight: 400; color: var(--poppy); }
+  .page-head p { color: color-mix(in srgb, var(--ink) 72%, transparent); max-width: 60ch; }
+
+  .filter-bar { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; padding: 22px 0 8px; }
+  .filter-bar select {
+    padding: 11px 18px; border: 1.5px solid var(--ink); border-radius: 100px;
+    font-family: var(--sans); font-size: 0.92rem; font-weight: 600; color: var(--ink);
+    background: #fff; outline: none; cursor: pointer; max-width: 320px;
+  }
+  .filter-bar select:focus { border-color: var(--poppy); }
+  .count { font-size: 0.85rem; color: color-mix(in srgb, var(--ink) 60%, transparent); }
+  .freshness { font-size: 0.78rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--green-soft); margin-left: auto; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 22px; padding: 26px 0 30px; }
+  .item {
+    background: #fff; border: 1.5px solid var(--ink); border-radius: 18px; overflow: hidden;
+    display: flex; flex-direction: column; transition: transform 0.22s, box-shadow 0.22s;
+  }
+  .item:hover { transform: translateY(-5px); box-shadow: 7px 7px 0 var(--rose); }
+  .item .pic { aspect-ratio: 4 / 3; background: var(--paper-deep); position: relative; overflow: hidden; }
+  .item .pic img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .item .pic .ph { position: absolute; inset: 0; display: grid; place-items: center; font-size: 2.2rem; }
+  .item .body { padding: 16px 18px 18px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
+  .item .title { font-weight: 800; font-size: 0.98rem; line-height: 1.35; }
+  .item .from { font-size: 0.8rem; color: color-mix(in srgb, var(--ink) 62%, transparent); }
+  .item .from a { color: inherit; text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--ink) 30%, transparent); }
+  .item .from a:hover { color: var(--poppy); }
+  .item .row { margin-top: auto; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .item .price { font-family: var(--serif); font-size: 1.25rem; font-weight: 600; }
+  .item .price .cur { font-size: 0.72rem; font-weight: 800; letter-spacing: 0.08em; color: var(--green-soft); margin-right: 4px; font-family: var(--sans); }
+  .item .order { background: var(--poppy); color: #fff; font-weight: 700; font-size: 0.82rem; padding: 9px 18px; border-radius: 100px; border: none; cursor: pointer; transition: background 0.2s; }
+  .item .order:hover { background: var(--poppy-deep); }
+
+  .more-row { text-align: center; padding: 6px 0 80px; }
+  .empty { text-align: center; padding: 60px 0 90px; color: color-mix(in srgb, var(--ink) 65%, transparent); }
+
+  dialog.order-modal { border: 1.5px solid var(--ink); border-radius: 22px; box-shadow: 10px 10px 0 var(--rose); background: var(--paper); color: var(--ink); padding: 36px 34px; width: min(480px, 92vw); font-family: var(--sans); }
+  dialog.order-modal::backdrop { background: rgba(34, 48, 31, 0.55); backdrop-filter: blur(3px); }
+  .order-modal h3 { font-family: var(--serif); font-size: 1.6rem; font-weight: 550; margin-bottom: 4px; }
+  .order-modal .routed { font-size: 0.88rem; color: var(--green-soft); font-weight: 700; margin-bottom: 18px; }
+  .order-modal label { display: block; font-size: 0.7rem; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: var(--green-soft); margin: 14px 0 4px; }
+  .order-modal input, .order-modal textarea { width: 100%; padding: 10px 14px; border: 1.5px solid var(--ink); border-radius: 12px; font-family: var(--sans); font-size: 0.95rem; background: #fff; color: var(--ink); outline: none; }
+  .order-modal input:focus, .order-modal textarea:focus { border-color: var(--poppy); }
+  .order-modal textarea { resize: vertical; min-height: 60px; }
+  .order-modal .stripe-note { margin-top: 16px; padding: 12px 16px; background: var(--paper-deep); border: 1px dashed var(--green-soft); border-radius: 12px; font-size: 0.82rem; color: color-mix(in srgb, var(--ink) 75%, transparent); }
+  .order-modal .modal-actions { display: flex; gap: 10px; margin-top: 20px; justify-content: flex-end; }
+
+  footer { border-top: 1px solid var(--line); padding: 26px 0 40px; font-size: 0.85rem; color: color-mix(in srgb, var(--ink) 55%, transparent); }
+  footer a { color: inherit; }
+
+  @media (max-width: 560px) {
+    .nav-links a:not(.btn) { display: none; }
+    .freshness { margin-left: 0; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <nav class="nav">
+    <a class="logo" href="/">
+      <svg viewBox="0 0 40 40" fill="none" aria-hidden="true">
+        <circle cx="20" cy="13" r="6" fill="#d94f2b"/><circle cx="13" cy="20" r="6" fill="#e9b4c0"/>
+        <circle cx="27" cy="20" r="6" fill="#c8973e"/><circle cx="20" cy="20" r="4" fill="#22301f"/>
+        <path d="M20 24 C20 30 18 34 16 37 M20 24 C20 30 22 34 24 37" stroke="#2f4a32" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      Flower&nbsp;Aggregator
+    </a>
+    <div class="nav-links">
+      <a href="/">Home</a>
+      <a href="https://docs.yo.florist">API</a>
+      <a href="/#florists" class="btn ghost">For florists</a>
+    </div>
+  </nav>
+</header>
+
+<section class="page-head wrap">
+  <span class="kicker">The catalog</span>
+  <h1>Real bouquets. Real prices. <em>Refreshed daily.</em></h1>
+  <p>Every bouquet below is scraped daily from a vetted partner florist's own site and shown with their price in their currency — the shop that makes and delivers it is named on every card.</p>
+</section>
+
+<div class="wrap filter-bar">
+  <select id="country-filter" aria-label="Filter by country">
+    <option value="">All countries</option>
+  </select>
+  <span class="count" id="count"></span>
+  <span class="freshness" id="freshness"></span>
+</div>
+
+<main class="wrap">
+  <div class="grid" id="grid"></div>
+  <div class="empty" id="empty" hidden>No bouquets in the catalog for this country yet — its florist's site doesn't expose products our sync can read. <a href="/">Search on the home page</a> to order florist's choice instead.</div>
+  <div class="more-row"><button class="btn ghost" id="more" hidden>Show more</button></div>
+</main>
+
+<footer>
+  <div class="wrap">© 2026 Flower Aggregator · prices update daily from each florist's own site · <a href="/">yo.florist</a></div>
+</footer>
+
+<dialog class="order-modal" id="order-modal">
+  <form id="order-form" method="dialog">
+    <h3>Send flowers</h3>
+    <div class="routed" id="order-routed"></div>
+    <div id="order-fields">
+      <label for="o-name">Your name</label>
+      <input id="o-name" type="text" required minlength="2" maxlength="120" autocomplete="name">
+      <label for="o-email">Email</label>
+      <input id="o-email" type="email" required autocomplete="email">
+      <label for="o-address">Recipient address</label>
+      <input id="o-address" type="text" required minlength="5" maxlength="500" placeholder="Street, city">
+      <label for="o-date">Delivery date</label>
+      <input id="o-date" type="date">
+      <label for="o-message">Card message (optional)</label>
+      <textarea id="o-message" maxlength="500" placeholder="Happy birthday!"></textarea>
+      <div class="stripe-note">
+        💳 <strong>Secure payment by Stripe.</strong> After placing the order you'll be
+        redirected to Stripe's checkout page to pay. Your florist is engaged the moment payment clears.
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn ghost" id="order-cancel">Cancel</button>
+        <button type="submit" class="btn poppy" id="order-submit">Place order</button>
+      </div>
+    </div>
+  </form>
+</dialog>
+
+<script>
+  const API = "https://api.yo.florist";
+  const LIMIT = 48;
+  let offset = 0, country = "", total = 0, current = null;
+
+  const el = id => document.getElementById(id);
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+  async function loadCountries() {
+    try {
+      const r = await fetch(`${API}/v1/countries`);
+      const d = await r.json();
+      el("country-filter").innerHTML = '<option value="">All countries</option>' +
+        d.countries.map(c => `<option value="${esc(c.iso2)}">${esc(c.country)}</option>`).join("");
+      const pre = new URLSearchParams(location.search).get("country");
+      if (pre) { el("country-filter").value = pre.toUpperCase(); country = el("country-filter").value; }
+    } catch {}
+  }
+
+  function card(item) {
+    const price = item.currency
+      ? `<span class="cur">${esc(item.currency)}</span>${esc(item.price)}`
+      : esc(item.price);
+    const pic = item.image
+      ? `<img src="${esc(item.image)}" alt="${esc(item.title)}" loading="lazy" onerror="this.remove()">`
+      : "";
+    return `
+      <article class="item">
+        <div class="pic"><div class="ph" aria-hidden="true">🌸</div>${pic}</div>
+        <div class="body">
+          <div class="title">${esc(item.title)}</div>
+          <div class="from">from <a href="${esc(item.source.website)}" target="_blank" rel="noopener">${esc(item.source.florist)}</a> · ${esc(item.source.city)}, ${esc(item.source.country)}</div>
+          <div class="row">
+            <div class="price">${price}</div>
+            <button class="order" type="button"
+              data-iso2="${esc(item.source ? item.iso2 || "" : "")}"
+              data-florist="${esc(item.source.florist)}" data-city="${esc(item.source.city)}" data-country="${esc(item.source.country)}"
+              data-itemtitle="${esc(item.title)}" data-itemprice="${esc(item.price)}" data-itemcurrency="${esc(item.currency || "")}" data-itemurl="${esc(item.url || "")}">Order</button>
+          </div>
+        </div>
+      </article>`;
+  }
+
+  async function load(reset) {
+    if (reset) { offset = 0; el("grid").innerHTML = ""; }
+    const url = country
+      ? `${API}/v1/catalog?country=${encodeURIComponent(country)}`
+      : `${API}/v1/catalog?limit=${LIMIT}&offset=${offset}`;
+    try {
+      const r = await fetch(url);
+      const d = await r.json();
+      const items = (d.items || []).map(it => ({ ...it, iso2: it.iso2 || d.iso2 }));
+      total = country ? items.length : (d.total ?? items.length);
+      if (d.generated_at) el("freshness").textContent = `catalog synced ${d.generated_at.slice(0, 10)}`;
+      el("grid").insertAdjacentHTML("beforeend", items.map(card).join(""));
+      offset += items.length;
+      el("count").textContent = total ? `${total} bouquet${total === 1 ? "" : "s"}` : "";
+      el("empty").hidden = total > 0;
+      el("more").hidden = country || offset >= total;
+      el("grid").querySelectorAll("button.order:not([data-bound])").forEach(b => {
+        b.dataset.bound = "1";
+        b.addEventListener("click", () => openModal(b.dataset));
+      });
+    } catch {
+      el("empty").hidden = false;
+      el("empty").textContent = "Couldn't load the catalog right now — please refresh in a minute.";
+    }
+  }
+
+  const modal = el("order-modal");
+  function openModal(ctx) {
+    current = ctx;
+    const price = ctx.itemcurrency ? `${ctx.itemcurrency} ${ctx.itemprice}` : ctx.itemprice;
+    el("order-routed").textContent =
+      `“${ctx.itemtitle}” — ${price} · made & delivered by ${ctx.florist}, ${ctx.city} (sourced from their own site)`;
+    modal.showModal();
+  }
+  el("order-cancel").addEventListener("click", () => modal.close());
+
+  const today = new Date();
+  el("o-date").min = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  el("o-date").addEventListener("click", function () { try { this.showPicker && this.showPicker(); } catch {} });
+
+  el("order-form").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const submit = el("order-submit");
+    submit.disabled = true;
+    submit.textContent = "Placing…";
+    try {
+      const r = await fetch(`${API}/v1/orders`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          country: current.country,
+          customer_name: el("o-name").value.trim(),
+          email: el("o-email").value.trim(),
+          address: el("o-address").value.trim(),
+          delivery_date: el("o-date").value || null,
+          message: el("o-message").value.trim() || null,
+          item_title: current.itemtitle,
+          item_price: parseFloat(current.itemprice) || null,
+          item_currency: current.itemcurrency || null,
+          item_url: current.itemurl || null,
+        }),
+      });
+      if (!r.ok) throw new Error(r.status);
+      const data = await r.json();
+      if (data.payment && data.payment.checkout_url) {
+        submit.textContent = "Redirecting to Stripe…";
+        window.location.href = data.payment.checkout_url;
+        return;
+      }
+      el("order-routed").textContent = `Order ${data.order_id} saved. ${data.payment && data.payment.note || ""}`;
+    } catch {
+      el("order-routed").textContent = "Couldn't place the order right now — please try again in a minute.";
+    } finally {
+      submit.disabled = false;
+      submit.textContent = "Place order";
+    }
+  });
+
+  el("country-filter").addEventListener("change", (e) => { country = e.target.value; load(true); });
+  el("more").addEventListener("click", () => load(false));
+
+  loadCountries().then(() => load(true));
+</script>
+</body>
+</html>

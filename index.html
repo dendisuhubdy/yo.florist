@@ -183,6 +183,46 @@
     padding: 8px 16px;
     border-right: 1px solid var(--line);
     min-width: 0;
+    position: relative;
+  }
+  .suggest {
+    position: absolute;
+    top: calc(100% + 14px);
+    left: -4px;
+    min-width: 300px;
+    background: #fff;
+    border: 1.5px solid var(--ink);
+    border-radius: 14px;
+    box-shadow: 6px 6px 0 var(--rose);
+    z-index: 60;
+    display: none;
+    max-height: 314px;
+    overflow-y: auto;
+  }
+  .suggest.open { display: block; }
+  .suggest button {
+    display: flex;
+    width: 100%;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 14px;
+    padding: 11px 16px;
+    border: none;
+    background: none;
+    font-family: var(--sans);
+    font-size: 0.93rem;
+    color: var(--ink);
+    text-align: left;
+    cursor: pointer;
+  }
+  .suggest button + button { border-top: 1px solid var(--line); }
+  .suggest button:hover, .suggest button.active { background: var(--paper-deep); }
+  .suggest .place { font-weight: 700; }
+  .suggest .iso {
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    color: var(--green-soft);
   }
   .search-field:nth-child(2) { flex: 0.7; border-right: none; }
   .search-field label {
@@ -735,10 +775,11 @@
       Flower&nbsp;Aggregator
     </a>
     <div class="nav-links">
+      <a href="/flowers">Bouquets</a>
       <a href="#how">How it works</a>
       <a href="#why">Why us</a>
       <a href="#florists">For florists</a>
-      <a href="#" class="btn">Find flowers</a>
+      <a href="/flowers" class="btn">Find flowers</a>
     </div>
   </nav>
 </header>
@@ -758,7 +799,8 @@
       <form class="search-mock load l4" id="hero-search">
         <div class="search-field">
           <label for="addr">Deliver to</label>
-          <input id="addr" type="text" placeholder="City or country — try “Jakarta, Indonesia”">
+          <input id="addr" type="text" placeholder="City or country — try “Jakarta, Indonesia”" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="suggest">
+          <div class="suggest" id="suggest" role="listbox"></div>
         </div>
         <div class="search-field">
           <label for="date">Date</label>
@@ -1224,6 +1266,89 @@
       submit.textContent = "Place order";
     }
   });
+
+  // ─── destination autocomplete (fed by /v1/countries) ───
+  const addrInput = document.getElementById("addr");
+  const suggestBox = document.getElementById("suggest");
+  let DESTS = null, activeIdx = -1;
+
+  const normStr = s => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+  async function loadDests() {
+    if (DESTS) return;
+    try {
+      const r = await fetch(`${API}/v1/countries`);
+      DESTS = (await r.json()).countries.map(c => ({
+        label: c.city ? `${c.city}, ${c.country}` : c.country,
+        iso2: c.iso2,
+        norm: normStr(`${c.city || ""} ${c.country}`),
+      }));
+    } catch { DESTS = []; }
+  }
+
+  function closeSuggest() {
+    suggestBox.classList.remove("open");
+    addrInput.setAttribute("aria-expanded", "false");
+    activeIdx = -1;
+  }
+
+  function renderSuggest() {
+    const q = normStr(addrInput.value.trim());
+    if (!DESTS || q.length < 1) { closeSuggest(); return; }
+    const starts = [], contains = [];
+    for (const d of DESTS) {
+      if (d.norm.split(/[\s,]+/).some(w => w.startsWith(q))) starts.push(d);
+      else if (d.norm.includes(q)) contains.push(d);
+    }
+    const hits = starts.concat(contains).slice(0, 8);
+    if (!hits.length) { closeSuggest(); return; }
+    suggestBox.innerHTML = hits.map((d, i) =>
+      `<button type="button" role="option" data-label="${esc(d.label)}"${i === activeIdx ? ' class="active"' : ""}>
+         <span class="place">${esc(d.label)}</span><span class="iso">${esc(d.iso2)}</span>
+       </button>`).join("");
+    suggestBox.querySelectorAll("button").forEach(b =>
+      b.addEventListener("mousedown", (e) => {   // mousedown beats input blur
+        e.preventDefault();
+        addrInput.value = b.dataset.label;
+        closeSuggest();
+        addrInput.focus();
+      }));
+    suggestBox.classList.add("open");
+    addrInput.setAttribute("aria-expanded", "true");
+  }
+
+  addrInput.addEventListener("focus", () => loadDests().then(renderSuggest));
+  addrInput.addEventListener("input", () => { activeIdx = -1; loadDests().then(renderSuggest); });
+  addrInput.addEventListener("blur", () => setTimeout(closeSuggest, 120));
+  addrInput.addEventListener("keydown", (e) => {
+    const opts = suggestBox.querySelectorAll("button");
+    if (!suggestBox.classList.contains("open") || !opts.length) return;
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      activeIdx = e.key === "ArrowDown"
+        ? (activeIdx + 1) % opts.length
+        : (activeIdx - 1 + opts.length) % opts.length;
+      opts.forEach((o, i) => o.classList.toggle("active", i === activeIdx));
+      opts[activeIdx].scrollIntoView({ block: "nearest" });
+    } else if (e.key === "Enter" && activeIdx >= 0) {
+      e.preventDefault();
+      addrInput.value = opts[activeIdx].dataset.label;
+      closeSuggest();
+    } else if (e.key === "Escape") {
+      closeSuggest();
+    }
+  });
+
+  // ─── calendar popup on the date field ───
+  const heroDate = document.getElementById("date");
+  const today = new Date();
+  heroDate.min = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  const modalDate = document.getElementById("o-date");
+  if (modalDate) modalDate.min = heroDate.min;
+  for (const d of [heroDate, modalDate]) {
+    if (!d) continue;
+    d.addEventListener("click", () => { try { d.showPicker && d.showPicker(); } catch {} });
+  }
 
   form.addEventListener("submit", async (ev) => {
     ev.preventDefault();
