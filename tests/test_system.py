@@ -285,6 +285,20 @@ class TestOrders(unittest.TestCase):
         self.assertTrue(data["item"]["fulfilled_by"])
         self.assert_payment_contract(data["payment"])
 
+    def test_order_with_delivery_time_window(self):
+        payload = dict(self.ORDER, delivery_time="morning (9am–12pm)")
+        status, data = post_json(API + "/v1/orders", payload)
+        self.assertEqual(status, 201)
+        self.assertEqual(data["delivery"]["time"], "morning (9am–12pm)")
+        self.assertFalse(data["delivery"]["confirm_time_with_customer"])
+
+    def test_order_confirm_time_with_customer(self):
+        payload = dict(self.ORDER, delivery_time=None, confirm_time_with_customer=True)
+        status, data = post_json(API + "/v1/orders", payload)
+        self.assertEqual(status, 201)
+        self.assertIsNone(data["delivery"]["time"])
+        self.assertTrue(data["delivery"]["confirm_time_with_customer"])
+
     def test_order_unknown_country_404(self):
         bad = dict(self.ORDER, country="Atlantis")
         expect_http_error(self, 404, post_json, API + "/v1/orders", bad)

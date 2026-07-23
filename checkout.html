@@ -59,6 +59,17 @@
   .suggest button + button { border-top: 1px solid var(--line); }
   .suggest button:hover, .suggest button.active { background: var(--paper-deep); }
   .geo-note { font-size: 0.75rem; color: color-mix(in srgb, var(--ink) 50%, transparent); margin-top: 6px; }
+  .check-row {
+    display: flex; align-items: flex-start; gap: 11px; margin-top: 18px;
+    font-size: 0.9rem; text-transform: none; letter-spacing: normal; font-weight: 500;
+    color: color-mix(in srgb, var(--ink) 80%, transparent); cursor: pointer; line-height: 1.5;
+  }
+  .check-row input[type="checkbox"] {
+    width: 19px; height: 19px; margin-top: 2px; flex-shrink: 0;
+    accent-color: var(--poppy); cursor: pointer;
+  }
+  .check-row strong { color: var(--ink); }
+  select:disabled { opacity: 0.45; cursor: not-allowed; background: var(--paper-deep); }
 
   .summary { position: sticky; top: 92px; background: #fff; border: 1.5px solid var(--ink); border-radius: 20px; overflow: hidden; box-shadow: 8px 8px 0 var(--rose); }
   .summary .pic { aspect-ratio: 16 / 10; background: var(--paper-deep); position: relative; }
@@ -146,8 +157,25 @@
 
       <div class="panel">
         <h2><span class="n">02 —</span> When?</h2>
-        <label for="r-date">Delivery date <span class="req">*</span></label>
-        <input id="r-date" type="date" required>
+        <div class="row2">
+          <div>
+            <label for="r-date">Delivery date <span class="req">*</span></label>
+            <input id="r-date" type="date" required>
+          </div>
+          <div>
+            <label for="r-time">Delivery time <span class="req">*</span></label>
+            <select id="r-time" required>
+              <option value="anytime (9am–6pm)">Anytime (9am – 6pm)</option>
+              <option value="morning (9am–12pm)">Morning (9am – 12pm)</option>
+              <option value="afternoon (12pm–5pm)">Afternoon (12pm – 5pm)</option>
+              <option value="evening (5pm–8pm)">Evening (5pm – 8pm)</option>
+            </select>
+          </div>
+        </div>
+        <label class="check-row" for="r-confirm-time">
+          <input id="r-confirm-time" type="checkbox">
+          <span>Not sure? Have the florist <strong>call the recipient to agree a convenient time</strong> before delivering</span>
+        </label>
       </div>
 
       <div class="panel">
@@ -232,6 +260,12 @@
   if (P.get("date")) el("r-date").value = P.get("date");
   el("r-date").addEventListener("click", function () { try { this.showPicker && this.showPicker(); } catch {} });
 
+  // "florist calls to agree a time" checkbox trumps the fixed window
+  el("r-confirm-time").addEventListener("change", function () {
+    el("r-time").disabled = this.checked;
+    el("r-time").required = !this.checked;
+  });
+
   // ─── address autocomplete via our API (Google Places when enabled, OSM fallback) ───
   const addr = el("r-address"), box = el("addr-suggest");
   let debounceT = null, activeIdx = -1, chosen = null;
@@ -306,6 +340,8 @@
           email: el("s-email").value.trim(),
           address: fullAddress,
           delivery_date: el("r-date").value || null,
+          delivery_time: el("r-confirm-time").checked ? null : el("r-time").value,
+          confirm_time_with_customer: el("r-confirm-time").checked,
           message: el("s-message").value.trim() || null,
           budget_usd: isItem ? null : parseInt(el("budget").value, 10),
           item_title: isItem ? ctx.title : null,

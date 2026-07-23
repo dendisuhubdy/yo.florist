@@ -323,6 +323,8 @@ def _db() -> sqlite3.Connection:
         ("delivery_instructions", "TEXT"),
         ("lat", "REAL"),
         ("lng", "REAL"),
+        ("delivery_time", "TEXT"),
+        ("confirm_time_with_customer", "INTEGER"),
     ):
         if col not in have:
             conn.execute(f"ALTER TABLE orders ADD COLUMN {col} {typ}")
@@ -441,6 +443,8 @@ class OrderIn(BaseModel):
     delivery_instructions: str | None = Field(None, max_length=500)
     lat: float | None = Field(None, ge=-90, le=90)
     lng: float | None = Field(None, ge=-180, le=180)
+    delivery_time: str | None = Field(None, max_length=40, description="Preferred window, e.g. 'morning (9am–12pm)'")
+    confirm_time_with_customer: bool = Field(False, description="Florist should phone the recipient to agree the exact time")
 
 
 @app.post("/v1/orders", status_code=201, tags=["orders"], summary="Create a purchase order (payment activates when Stripe is approved)")
@@ -461,8 +465,8 @@ def create_order(order: OrderIn):
             " item_title, item_price, item_currency, item_url,"
             " stripe_session_id, checkout_url,"
             " recipient_name, recipient_phone, street, city, postal_code,"
-            " delivery_instructions, lat, lng)"
-            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " delivery_instructions, lat, lng, delivery_time, confirm_time_with_customer)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (
                 oid,
                 datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -489,6 +493,8 @@ def create_order(order: OrderIn):
                 order.delivery_instructions,
                 order.lat,
                 order.lng,
+                order.delivery_time,
+                int(order.confirm_time_with_customer),
             ),
         )
     item = None
@@ -519,6 +525,11 @@ def create_order(order: OrderIn):
     return {
         "order_id": oid,
         "status": "pending_payment",
+        "delivery": {
+            "date": order.delivery_date,
+            "time": order.delivery_time,
+            "confirm_time_with_customer": order.confirm_time_with_customer,
+        },
         "routed_to": {
             "iso2": florist["iso2"],
             "country": florist["country"],
