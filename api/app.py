@@ -30,6 +30,8 @@ STRIPE_SECRET_KEY = os.environ.get("FLOWER_STRIPE_SECRET_KEY", "")
 # Google Maps/Places key (PLACES_GO_SDK). Autocomplete prefers Google and
 # silently falls back to OSM Photon while the key's project has no billing.
 GOOGLE_MAPS_KEY = os.environ.get("PLACES_GO_SDK", "")
+# Admin key for the moderation dashboard at yo.florist/admin (env file only)
+ADMIN_KEY = os.environ.get("YF_ADMIN_KEY", "")
 STRIPE_API = "https://api.stripe.com/v1"
 SITE_URL = "https://yo.florist"
 # currencies Stripe treats as having no minor unit (charge amounts are whole)
@@ -313,8 +315,13 @@ def _partner_auth(x_partner_key: str = Header(..., description="Secret key issue
     key_hash = hashlib.sha256(x_partner_key.encode()).hexdigest()
     with _db() as conn:
         row = conn.execute("SELECT * FROM partners WHERE key_hash = ?", (key_hash,)).fetchone()
-    if row is None or row["status"] != "active":
+    if row is None:
         raise HTTPException(status_code=401, detail="Invalid partner key")
+    if row["status"] == "rejected":
+        raise HTTPException(status_code=403, detail="This shop application was not approved. Contact us if you think that's a mistake.")
+    if row["status"] == "suspended":
+        raise HTTPException(status_code=403, detail="This shop is currently suspended. Contact us to resolve it.")
+    # 'pending' partners may manage their catalog; it goes public on approval
     return dict(row)
 
 
@@ -356,16 +363,18 @@ def register_partner(p: PartnerIn):
         conn.execute(
             "INSERT INTO partners (id, created_at, status, key_hash, shop_name, iso2, country,"
             " city, email, phone, website, instagram, description) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (pid, datetime.now(timezone.utc).isoformat(timespec="seconds"), "active",
+            (pid, datetime.now(timezone.utc).isoformat(timespec="seconds"), "pending",
              hashlib.sha256(key.encode()).hexdigest(), p.shop_name.strip(), centry["iso2"],
              centry["country"], p.city.strip(), p.email.strip(), p.phone, p.website, ig or None, p.description),
         )
     return {
         "partner": _partner_public({"id": pid, "shop_name": p.shop_name.strip(), "iso2": centry["iso2"],
                                     "country": centry["country"], "city": p.city.strip(), "website": p.website,
-                                    "instagram": ig or None, "status": "active", "created_at": None}),
+                                    "instagram": ig or None, "status": "pending", "created_at": None}),
         "partner_key": key,
-        "note": "Store this key safely — it is shown only once and is how you manage your catalog at https://yo.florist/dashboard",
+        "note": ("Store this key safely — it is shown only once and is how you manage your catalog at "
+                 "https://yo.florist/dashboard. Your shop is under review; you can add your catalog now "
+                 "and it goes live the moment you're approved."),
     }
 
 
@@ -463,6 +472,69 @@ def _partner_catalog_items(iso2: str) -> list[dict]:
                        "country": d["pcountry"], "partner": True},
         })
     return out
+
+
+# ─── admin: shop moderation (yo.florist/admin) ───
+
+def _admin_auth(x_admin_key: str = Header(...)):
+    if not ADMIN_KEY or not secrets.compare_digest(x_admin_key, ADMIN_KEY):
+        raise HTTPException(status_code=401, detail="Invalid admin key")
+
+
+@app.get("/v1/admin/stats", include_in_schema=False, dependencies=[Depends(_admin_auth)])
+def admin_stats():
+    with _db() as conn:
+        partners = dict(conn.execute("SELECT status, COUNT(*) FROM partners GROUP BY status").fetchall())
+        items = conn.execute("SELECT COUNT(*) FROM partner_items WHERE status='active'").fetchone()[0]
+        orders = dict(conn.execute("SELECT status, COUNT(*) FROM orders GROUP BY status").fetchall())
+    return {"partners": partners, "partner_items": items, "orders": orders}
+
+
+@app.get("/v1/admin/partners", include_in_schema=False, dependencies=[Depends(_admin_auth)])
+def admin_partners(status: str = Query("pending")):
+    q = ("SELECT p.*, (SELECT COUNT(*) FROM partner_items pi WHERE pi.partner_id = p.id"
+         " AND pi.status='active') AS item_count FROM partners p")
+    args: tuple = ()
+    if status != "all":
+        q += " WHERE p.status = ?"
+        args = (status,)
+    q += " ORDER BY p.created_at DESC"
+    with _db() as conn:
+        rows = [dict(r) for r in conn.execute(q, args).fetchall()]
+    for r in rows:
+        r.pop("key_hash", None)
+    return {"count": len(rows), "partners": rows}
+
+
+@app.get("/v1/admin/partners/{pid}/items", include_in_schema=False, dependencies=[Depends(_admin_auth)])
+def admin_partner_items(pid: str):
+    with _db() as conn:
+        rows = conn.execute(
+            "SELECT id, created_at, status, title, price, currency, image, url, description"
+            " FROM partner_items WHERE partner_id = ? ORDER BY created_at DESC", (pid,)).fetchall()
+    return {"count": len(rows), "items": [dict(r) for r in rows]}
+
+
+@app.post("/v1/admin/partners/{pid}/status", include_in_schema=False, dependencies=[Depends(_admin_auth)])
+def admin_partner_set_status(pid: str, status: str = Query(..., description="active | rejected | suspended | pending")):
+    if status not in ("active", "rejected", "suspended", "pending"):
+        raise HTTPException(status_code=422, detail="Invalid status")
+    with _db() as conn:
+        cur = conn.execute("UPDATE partners SET status = ? WHERE id = ?", (status, pid))
+    if cur.rowcount == 0:
+        raise HTTPException(status_code=404, detail="No such partner")
+    return {"id": pid, "status": status}
+
+
+@app.get("/v1/admin/orders", include_in_schema=False, dependencies=[Depends(_admin_auth)])
+def admin_orders(limit: int = Query(50, ge=1, le=200)):
+    with _db() as conn:
+        rows = conn.execute(
+            "SELECT id, created_at, status, iso2, florist, partner_id, customer_name, email,"
+            " recipient_name, city, delivery_date, delivery_time, confirm_time_with_customer,"
+            " item_title, item_price, item_currency, budget_usd"
+            " FROM orders ORDER BY created_at DESC LIMIT ?", (limit,)).fetchall()
+    return {"count": len(rows), "orders": [dict(r) for r in rows]}
 
 
 def _partner_isos() -> set[str]:

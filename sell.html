@@ -70,6 +70,22 @@
   .warn { font-size: 0.85rem; font-weight: 700; color: var(--poppy-deep); }
 
   @media (max-width: 860px) { .points, .signup, .row2 { grid-template-columns: 1fr; } }
+
+  /* mobile refinements */
+  @media (max-width: 600px) {
+    .wrap { padding: 0 16px; }
+    .nav { padding: 13px 16px; }
+    .logo { font-size: 1.02rem; gap: 7px; }
+    .logo svg { width: 25px; height: 25px; }
+    input, select, textarea { font-size: 16px; } /* prevents iOS focus zoom */
+    .nav a.plain { font-size: 0.78rem; }
+    .hero { padding: 40px 0 24px; }
+    .hero p { font-size: 1rem; }
+    .points { gap: 16px; padding: 16px 0 28px; }
+    .signup { gap: 26px; padding: 8px 0 66px; }
+    .panel { padding: 22px 18px; box-shadow: 5px 5px 0 var(--rose); }
+    .key-box { font-size: 0.78rem; }
+  }
 </style>
 </head>
 <body>
@@ -148,7 +164,7 @@
 
       <div class="panel key-panel" id="key-panel">
         <h2>Welcome aboard 🌸</h2>
-        <p class="hint">Your shop <strong id="k-shop"></strong> is registered. This is your <strong>partner key</strong> — it's your login for the catalog dashboard.</p>
+        <p class="hint">Your shop <strong id="k-shop"></strong> is registered. This is your <strong>partner key</strong> — it's your login for the catalog dashboard. We review new shops quickly — add your catalog now and it goes live the moment you're approved.</p>
         <div class="key-box" id="k-key"></div>
         <p class="warn">Shown only once — save it somewhere safe now (notes app, password manager).</p>
         <a class="btn" id="k-go" href="/dashboard">Open my dashboard →</a>

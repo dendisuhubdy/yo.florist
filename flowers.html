@@ -81,6 +81,23 @@
     .nav-links a:not(.btn) { display: none; }
     .freshness { margin-left: 0; }
   }
+
+  /* mobile refinements */
+  @media (max-width: 600px) {
+    .wrap { padding: 0 16px; }
+    .nav { padding: 13px 16px; }
+    .logo { font-size: 1.02rem; gap: 7px; }
+    .logo svg { width: 25px; height: 25px; }
+    input, select, textarea { font-size: 16px; } /* prevents iOS focus zoom */
+    .page-head { padding: 38px 0 14px; }
+    .filter-bar select { max-width: none; flex: 1 1 100%; }
+    .grid { grid-template-columns: repeat(2, 1fr); gap: 12px; padding: 18px 0 22px; }
+    .item .body { padding: 10px 11px 12px; gap: 4px; }
+    .item .title { font-size: 0.82rem; }
+    .item .from { font-size: 0.7rem; }
+    .item .price { font-size: 1rem; }
+    .item .order { font-size: 0.72rem; padding: 7px 12px; }
+  }
 </style>
 </head>
 <body>

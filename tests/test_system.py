@@ -228,8 +228,22 @@ class TestGeo(unittest.TestCase):
             self.assertIn("POST", allowed)
 
 
+def admin_key():
+    k = os.environ.get("YF_ADMIN_KEY")
+    if not k:
+        try:
+            with open("/etc/yoflorist/stripe.env") as f:
+                for line in f:
+                    if line.startswith("YF_ADMIN_KEY="):
+                        k = line.strip().split("=", 1)[1]
+        except OSError:
+            pass
+    return k
+
+
 class TestPartners(unittest.TestCase):
-    """Self-serve seller flow: register → list items → sell → clean up.
+    """Seller flow with moderation: register (pending) → build catalog →
+    admin approves → items go public → sell → clean up.
 
     Uses Nauru: it has no directory florist or scraped catalog, which also
     proves partner shops can cover directory gaps.
@@ -246,8 +260,10 @@ class TestPartners(unittest.TestCase):
         self.assertEqual(status, 201)
         key, pid = reg["partner_key"], reg["partner"]["id"]
         self.assertTrue(key.startswith("yfk_"))
+        self.assertEqual(reg["partner"]["status"], "pending")
         auth = {"X-Partner-Key": key}
 
+        # a pending shop can build its catalog…
         status, item = post_json(API + "/v1/partners/items", {
             "title": "Test Frangipani Bundle",
             "price": 39.0,
@@ -260,7 +276,20 @@ class TestPartners(unittest.TestCase):
         self.assertEqual(mine["count"], 1)
         self.assertEqual(mine["items"][0]["currency"], "AUD")
 
-        # live in the public catalog, honestly attributed as a partner shop
+        # …but nothing is public until an admin approves the shop
+        _, _, cat = get_json(API + "/v1/catalog?country=NR")
+        self.assertEqual([i for i in cat["items"] if i.get("partner_id") == pid], [])
+
+        ak = admin_key()
+        if not ak:
+            self.skipTest("no admin key available in this environment")
+        aauth = {"X-Admin-Key": ak}
+        _, _, pending = get_json(API + "/v1/admin/partners?status=pending", headers=aauth)
+        self.assertIn(pid, [p["id"] for p in pending["partners"]])
+        status, _ = post_json(API + f"/v1/admin/partners/{pid}/status?status=active", None, headers=aauth)
+        self.assertEqual(status, 200)
+
+        # approved → live in the public catalog, honestly attributed
         _, _, cat = get_json(API + "/v1/catalog?country=NR")
         self.assertEqual(cat["florist"], "System Test Blooms")
         live = [i for i in cat["items"] if i.get("partner_id") == pid]
@@ -312,6 +341,28 @@ class TestPartners(unittest.TestCase):
         status, _, body = get(SITE + "/dashboard")
         self.assertEqual(status, 200)
         self.assertIn("Partner dashboard", body.decode())
+
+
+class TestAdmin(unittest.TestCase):
+    def test_admin_page_serves(self):
+        status, _, body = get(SITE + "/admin")
+        self.assertEqual(status, 200)
+        self.assertIn("ADMIN", body.decode())
+
+    def test_bad_admin_key_401(self):
+        expect_http_error(self, 401, get_json, API + "/v1/admin/stats", {"X-Admin-Key": "wrong"})
+
+    def test_admin_hidden_from_public_docs(self):
+        _, _, spec = get_json(DOCS + "/openapi.json")
+        self.assertFalse([p for p in spec["paths"] if p.startswith("/v1/admin")])
+
+    def test_stats_shape(self):
+        ak = admin_key()
+        if not ak:
+            self.skipTest("no admin key available in this environment")
+        _, _, s = get_json(API + "/v1/admin/stats", {"X-Admin-Key": ak})
+        self.assertIn("partners", s)
+        self.assertIn("orders", s)
 
 
 class TestOrders(unittest.TestCase):

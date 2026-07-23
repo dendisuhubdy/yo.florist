@@ -66,6 +66,22 @@
   #app.show { display: block; }
   .muted { color: color-mix(in srgb, var(--ink) 55%, transparent); font-size: 0.9rem; }
   @media (max-width: 720px) { .row2, .row3 { grid-template-columns: 1fr; } }
+
+  /* mobile refinements */
+  @media (max-width: 600px) {
+    .wrap { padding: 0 16px; }
+    .nav { padding: 13px 16px; }
+    .logo { font-size: 1.02rem; gap: 7px; }
+    .logo svg { width: 25px; height: 25px; }
+    input, select, textarea { font-size: 16px; } /* prevents iOS focus zoom */
+    h1 { padding: 26px 0 2px; }
+    .panel { padding: 20px 16px; margin-bottom: 18px; }
+    .items { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+    .item .t { font-size: 0.8rem; }
+    .item .p { font-size: 0.95rem; }
+    .btn.small { font-size: 0.72rem; padding: 7px 12px; }
+    .gate { margin: 36px auto 60px; }
+  }
 </style>
 </head>
 <body>
@@ -169,17 +185,22 @@
     if (!KEY) return;
     try {
       const r = await fetch(`${API}/v1/partners/me`, { headers: H() });
-      if (!r.ok) throw new Error();
+      if (r.status === 403) { const d = await r.json(); throw new Error(d.detail); }
+      if (!r.ok) throw new Error("");
       const me = await r.json();
       el("gate").style.display = "none";
       el("app").classList.add("show");
       el("logout").hidden = false;
       el("shop-title").textContent = me.shop_name;
       el("shop-sub").innerHTML = `${esc(me.city)}, ${esc(me.country)} · partner since ${esc((me.created_at || "").slice(0, 10))} · <a href="/flowers?country=${esc(me.iso2)}" target="_blank">see your public listings →</a>`;
+      if (me.status === "pending") {
+        el("shop-sub").insertAdjacentHTML("afterend",
+          '<div class="panel" style="border-color:#c8973e;background:#fdf6e6">⏳ <strong>Your shop is under review.</strong> Keep building your catalog — everything goes live the moment you\'re approved.</div>');
+      }
       loadItems();
-    } catch {
+    } catch (e) {
       localStorage.removeItem("yf_partner_key"); KEY = "";
-      el("gate-error").textContent = "That key didn't work — check it and try again.";
+      el("gate-error").textContent = (e && e.message) || "That key didn't work — check it and try again.";
     }
   }
 

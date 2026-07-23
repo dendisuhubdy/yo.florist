@@ -99,6 +99,22 @@
     .summary { position: static; order: -1; }
     .row2 { grid-template-columns: 1fr; }
   }
+
+  /* mobile refinements */
+  @media (max-width: 600px) {
+    .wrap { padding: 0 16px; }
+    .nav { padding: 13px 16px; }
+    .logo { font-size: 1.02rem; gap: 7px; }
+    .logo svg { width: 25px; height: 25px; }
+    input, select, textarea { font-size: 16px; } /* prevents iOS focus zoom */
+    h1 { padding: 26px 0 4px; }
+    .sub { margin-bottom: 22px; }
+    .panel { padding: 20px 17px; margin-bottom: 16px; }
+    .summary .body { padding: 17px 17px 18px; }
+    .stripe-note { margin: 13px 17px 0; }
+    .place-row { padding: 15px 17px 19px; }
+    .totals .grand { font-size: 1.2rem; }
+  }
 </style>
 </head>
 <body>

@@ -38,6 +38,17 @@
     text-decoration: none; transition: background 0.2s;
   }
   a.home:hover { background: var(--poppy); }
+
+  /* mobile refinements */
+  @media (max-width: 600px) {
+    .wrap { padding: 0 16px; }
+    .nav { padding: 13px 16px; }
+    .logo { font-size: 1.02rem; gap: 7px; }
+    .logo svg { width: 25px; height: 25px; }
+    input, select, textarea { font-size: 16px; } /* prevents iOS focus zoom */
+    .card { padding: 32px 22px; box-shadow: 6px 6px 0 var(--rose); }
+    h1 { font-size: 1.55rem; }
+  }
 </style>
 </head>
 <body>
