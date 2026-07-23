@@ -1,7 +1,9 @@
 """Flower Aggregator API — serves the partner-florist directory behind yo.florist."""
+import hashlib
 import json
 import os
 import re
+import secrets
 import sqlite3
 import unicodedata
 import uuid
@@ -9,7 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import requests
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
@@ -17,6 +19,10 @@ from pydantic import BaseModel, Field
 DATA_FILE = Path("/opt/yoflorist/florists.json")
 DB_FILE = Path("/opt/yoflorist/data/orders.db")
 CATALOG_FILE = Path("/opt/yoflorist/data/catalog.json")  # written daily by scraper.py
+MEDIA_DIR = Path("/opt/yoflorist/media")  # partner-uploaded photos, served at yo.florist/media/
+MEDIA_URL = "https://yo.florist/media"
+MAX_UPLOAD = 5 * 1024 * 1024
+MAX_ITEMS_PER_PARTNER = 100
 
 # Live Stripe key comes from /etc/yoflorist/stripe.env via the systemd unit.
 # When unset, orders fall back to the pre-launch placeholder payment block.
@@ -47,7 +53,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_methods=["GET", "POST", "OPTIONS"],  # POST is needed for /v1/orders from the browser
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],  # browser needs POST for orders, PUT/DELETE for the partner dashboard
     allow_headers=["*"],
 )
 
@@ -58,9 +64,21 @@ def _load() -> list[dict]:
     mtime = DATA_FILE.stat().st_mtime
     if _cache["mtime"] != mtime:
         with DATA_FILE.open() as f:
-            _cache["data"] = [e for e in json.load(f) if e.get("name")]
+            raw = json.load(f)
+        _cache["raw"] = raw  # every country, even ones without a scraped-directory florist
+        _cache["data"] = [e for e in raw if e.get("name")]
         _cache["mtime"] = mtime
     return _cache["data"]
+
+
+def _resolve_country(country: str) -> dict:
+    """Match any real country (partner florists can cover directory gaps)."""
+    _load()
+    q = _norm(country)
+    for e in _cache["raw"]:
+        if q == e["iso2"].lower() or q == _norm(e["country"]):
+            return e
+    raise HTTPException(status_code=404, detail=f"Unknown country {country!r}")
 
 
 _cat_cache = {"mtime": None, "data": {}}
@@ -142,17 +160,18 @@ def search(
 
 
 def _items_for(florist: dict, limit: int | None = None) -> list[dict]:
-    """Catalog items for a florist, each carrying an honest source attribution."""
-    items = (_catalog().get("items") or {}).get(florist["iso2"], [])
-    if limit is not None:
-        items = items[:limit]
-    source = {
-        "florist": florist["name"],
-        "website": florist["website"],
-        "city": florist["city"],
-        "country": florist["country"],
-    }
-    return [{**it, "source": source} for it in items]
+    """Catalog items for a country: partner-uploaded first, then scraped —
+    each carrying an honest source attribution."""
+    items = list(_partner_catalog_items(florist["iso2"]))
+    if florist.get("name"):
+        source = {
+            "florist": florist["name"],
+            "website": florist["website"],
+            "city": florist["city"],
+            "country": florist["country"],
+        }
+        items += [{**it, "source": source} for it in (_catalog().get("items") or {}).get(florist["iso2"], [])]
+    return items if limit is None else items[:limit]
 
 
 @app.get("/v1/catalog", tags=["catalog"], summary="Scraped bouquet catalog — one country's, or browse everything")
@@ -163,23 +182,26 @@ def catalog(
 ):
     cat = _catalog()
     if country:
-        florist = _find_florist(country)
-        items = _items_for(florist)
+        centry = _resolve_country(country)  # partner shops can cover directory gaps
+        items = _items_for(centry)
+        florist_name = centry.get("name") or (items[0]["source"]["florist"] if items else None)
         return {
-            "iso2": florist["iso2"],
-            "country": florist["country"],
-            "florist": florist["name"],
-            "florist_website": florist["website"],
+            "iso2": centry["iso2"],
+            "country": centry["country"],
+            "florist": florist_name,
+            "florist_website": centry.get("website") or (items[0]["source"]["website"] if items else None),
             "generated_at": cat.get("generated_at"),
             "count": len(items),
             "items": items,
         }
-    by_iso = {e["iso2"]: e for e in _load()}
+    _load()
+    by_iso = {e["iso2"]: e for e in _cache["raw"]}
+    covered = set(cat.get("items") or {}) | _partner_isos()
     everything = []
-    for iso2 in sorted(cat.get("items") or {}, key=lambda k: by_iso.get(k, {}).get("country", "")):
-        florist = by_iso.get(iso2)
-        if florist:
-            everything.extend({**it, "iso2": iso2} for it in _items_for(florist))
+    for iso2 in sorted(covered, key=lambda k: by_iso.get(k, {}).get("country", "")):
+        centry = by_iso.get(iso2)
+        if centry:
+            everything.extend({**it, "iso2": iso2} for it in _items_for(centry))
     return {
         "generated_at": cat.get("generated_at"),
         "total": len(everything),
@@ -285,6 +307,172 @@ def geo_details(place_id: str = Query(..., max_length=300)):
         raise HTTPException(status_code=502, detail="Place lookup failed")
 
 
+# ─── partner florists: self-serve catalog (the "sell on yo.florist" flow) ───
+
+def _partner_auth(x_partner_key: str = Header(..., description="Secret key issued at signup")) -> dict:
+    key_hash = hashlib.sha256(x_partner_key.encode()).hexdigest()
+    with _db() as conn:
+        row = conn.execute("SELECT * FROM partners WHERE key_hash = ?", (key_hash,)).fetchone()
+    if row is None or row["status"] != "active":
+        raise HTTPException(status_code=401, detail="Invalid partner key")
+    return dict(row)
+
+
+def _partner_public(p: dict) -> dict:
+    return {k: p.get(k) for k in ("id", "shop_name", "iso2", "country", "city", "website", "instagram", "status", "created_at")}
+
+
+class PartnerIn(BaseModel):
+    shop_name: str = Field(..., min_length=2, max_length=120)
+    country: str = Field(..., description="ISO-3166 alpha-2 code or country name")
+    city: str = Field(..., min_length=2, max_length=120)
+    email: str = Field(...)
+    phone: str | None = Field(None, max_length=40)
+    website: str | None = Field(None, max_length=500)
+    instagram: str | None = Field(None, max_length=200, description="Handle or profile URL")
+    description: str | None = Field(None, max_length=1000)
+
+
+class PartnerItemIn(BaseModel):
+    title: str = Field(..., min_length=2, max_length=300)
+    price: float = Field(..., gt=0, le=100000)
+    currency: str = Field(..., min_length=3, max_length=3, description="ISO code, e.g. USD, EUR, IDR")
+    image_url: str | None = Field(None, max_length=1000, description="Photo URL — or use /v1/partners/upload")
+    product_url: str | None = Field(None, max_length=1000, description="This item on your own site/Instagram, if any")
+    description: str | None = Field(None, max_length=500)
+
+
+@app.post("/v1/partners", status_code=201, tags=["partners"], summary="Register as a partner florist")
+def register_partner(p: PartnerIn):
+    if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", p.email):
+        raise HTTPException(status_code=422, detail="Invalid email address")
+    centry = _resolve_country(p.country)
+    ig = (p.instagram or "").strip().lstrip("@")
+    if ig and not ig.startswith("http"):
+        ig = f"https://instagram.com/{ig}"
+    key = "yfk_" + secrets.token_hex(20)
+    pid = "pf_" + uuid.uuid4().hex[:10]
+    with _db() as conn:
+        conn.execute(
+            "INSERT INTO partners (id, created_at, status, key_hash, shop_name, iso2, country,"
+            " city, email, phone, website, instagram, description) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (pid, datetime.now(timezone.utc).isoformat(timespec="seconds"), "active",
+             hashlib.sha256(key.encode()).hexdigest(), p.shop_name.strip(), centry["iso2"],
+             centry["country"], p.city.strip(), p.email.strip(), p.phone, p.website, ig or None, p.description),
+        )
+    return {
+        "partner": _partner_public({"id": pid, "shop_name": p.shop_name.strip(), "iso2": centry["iso2"],
+                                    "country": centry["country"], "city": p.city.strip(), "website": p.website,
+                                    "instagram": ig or None, "status": "active", "created_at": None}),
+        "partner_key": key,
+        "note": "Store this key safely — it is shown only once and is how you manage your catalog at https://yo.florist/dashboard",
+    }
+
+
+@app.get("/v1/partners/me", tags=["partners"], summary="Your partner profile")
+def partner_me(partner: dict = Depends(_partner_auth)):
+    with _db() as conn:
+        n = conn.execute("SELECT COUNT(*) FROM partner_items WHERE partner_id = ? AND status = 'active'",
+                         (partner["id"],)).fetchone()[0]
+    return {**_partner_public(partner), "items": n}
+
+
+@app.get("/v1/partners/items", tags=["partners"], summary="List your catalog items")
+def partner_items_list(partner: dict = Depends(_partner_auth)):
+    with _db() as conn:
+        rows = conn.execute(
+            "SELECT id, created_at, title, price, currency, image, url, description FROM partner_items"
+            " WHERE partner_id = ? AND status = 'active' ORDER BY created_at DESC, id DESC",
+            (partner["id"],)).fetchall()
+    return {"count": len(rows), "items": [dict(r) for r in rows]}
+
+
+@app.post("/v1/partners/items", status_code=201, tags=["partners"], summary="Add a catalog item")
+def partner_item_add(item: PartnerItemIn, partner: dict = Depends(_partner_auth)):
+    with _db() as conn:
+        n = conn.execute("SELECT COUNT(*) FROM partner_items WHERE partner_id = ? AND status = 'active'",
+                         (partner["id"],)).fetchone()[0]
+        if n >= MAX_ITEMS_PER_PARTNER:
+            raise HTTPException(status_code=409, detail=f"Catalog limit of {MAX_ITEMS_PER_PARTNER} items reached")
+        cur = conn.execute(
+            "INSERT INTO partner_items (partner_id, created_at, status, title, price, currency,"
+            " image, url, description) VALUES (?,?,?,?,?,?,?,?,?)",
+            (partner["id"], datetime.now(timezone.utc).isoformat(timespec="seconds"), "active",
+             item.title.strip(), round(item.price, 2), item.currency.upper(),
+             item.image_url, item.product_url, item.description),
+        )
+    return {"id": cur.lastrowid, "status": "active"}
+
+
+@app.put("/v1/partners/items/{item_id}", tags=["partners"], summary="Update a catalog item")
+def partner_item_update(item_id: int, item: PartnerItemIn, partner: dict = Depends(_partner_auth)):
+    with _db() as conn:
+        cur = conn.execute(
+            "UPDATE partner_items SET title=?, price=?, currency=?, image=?, url=?, description=?"
+            " WHERE id=? AND partner_id=? AND status='active'",
+            (item.title.strip(), round(item.price, 2), item.currency.upper(), item.image_url,
+             item.product_url, item.description, item_id, partner["id"]),
+        )
+    if cur.rowcount == 0:
+        raise HTTPException(status_code=404, detail="No such item")
+    return {"id": item_id, "status": "updated"}
+
+
+@app.delete("/v1/partners/items/{item_id}", tags=["partners"], summary="Remove a catalog item")
+def partner_item_delete(item_id: int, partner: dict = Depends(_partner_auth)):
+    with _db() as conn:
+        cur = conn.execute("UPDATE partner_items SET status='deleted' WHERE id=? AND partner_id=? AND status='active'",
+                           (item_id, partner["id"]))
+    if cur.rowcount == 0:
+        raise HTTPException(status_code=404, detail="No such item")
+    return {"id": item_id, "status": "deleted"}
+
+
+@app.post("/v1/partners/upload", tags=["partners"], summary="Upload a bouquet photo (jpeg/png/webp, ≤5MB)")
+async def partner_upload(partner: dict = Depends(_partner_auth), file: UploadFile = File(...)):
+    ext = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}.get(file.content_type)
+    if ext is None:
+        raise HTTPException(status_code=415, detail="Use a JPEG, PNG or WebP image")
+    data = await file.read()
+    if len(data) > MAX_UPLOAD:
+        raise HTTPException(status_code=413, detail="Image too large (max 5MB)")
+    MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+    name = f"{partner['id']}-{uuid.uuid4().hex[:10]}{ext}"
+    (MEDIA_DIR / name).write_bytes(data)
+    return {"url": f"{MEDIA_URL}/{name}"}
+
+
+def _partner_catalog_items(iso2: str) -> list[dict]:
+    """Live partner items for a country, shaped like scraped catalog items."""
+    with _db() as conn:
+        rows = conn.execute(
+            "SELECT pi.id, pi.partner_id, pi.title, pi.price, pi.currency, pi.image, pi.url,"
+            " p.shop_name, p.city AS pcity, p.country AS pcountry, p.website AS pweb, p.instagram"
+            " FROM partner_items pi JOIN partners p ON p.id = pi.partner_id"
+            " WHERE p.iso2 = ? AND pi.status = 'active' AND p.status = 'active'"
+            " ORDER BY pi.created_at DESC, pi.id DESC",
+            (iso2,)).fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        link = d["pweb"] or d["instagram"] or ""
+        out.append({
+            "title": d["title"], "price": d["price"], "currency": d["currency"],
+            "image": d["image"], "url": d["url"] or link, "partner_id": d["partner_id"],
+            "source": {"florist": d["shop_name"], "website": link, "city": d["pcity"],
+                       "country": d["pcountry"], "partner": True},
+        })
+    return out
+
+
+def _partner_isos() -> set[str]:
+    with _db() as conn:
+        rows = conn.execute(
+            "SELECT DISTINCT p.iso2 FROM partner_items pi JOIN partners p ON p.id = pi.partner_id"
+            " WHERE pi.status = 'active' AND p.status = 'active'").fetchall()
+    return {r[0] for r in rows}
+
+
 # ─── orders ───
 
 def _db() -> sqlite3.Connection:
@@ -325,9 +513,41 @@ def _db() -> sqlite3.Connection:
         ("lng", "REAL"),
         ("delivery_time", "TEXT"),
         ("confirm_time_with_customer", "INTEGER"),
+        ("partner_id", "TEXT"),
     ):
         if col not in have:
             conn.execute(f"ALTER TABLE orders ADD COLUMN {col} {typ}")
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS partners (
+            id TEXT PRIMARY KEY,
+            created_at TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'active',
+            key_hash TEXT NOT NULL,
+            shop_name TEXT NOT NULL,
+            iso2 TEXT NOT NULL,
+            country TEXT NOT NULL,
+            city TEXT NOT NULL,
+            email TEXT NOT NULL,
+            phone TEXT,
+            website TEXT,
+            instagram TEXT,
+            description TEXT
+        )"""
+    )
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS partner_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            partner_id TEXT NOT NULL REFERENCES partners(id),
+            created_at TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'active',
+            title TEXT NOT NULL,
+            price REAL NOT NULL,
+            currency TEXT NOT NULL,
+            image TEXT,
+            url TEXT,
+            description TEXT
+        )"""
+    )
     return conn
 
 
@@ -445,13 +665,23 @@ class OrderIn(BaseModel):
     lng: float | None = Field(None, ge=-180, le=180)
     delivery_time: str | None = Field(None, max_length=40, description="Preferred window, e.g. 'morning (9am–12pm)'")
     confirm_time_with_customer: bool = Field(False, description="Florist should phone the recipient to agree the exact time")
+    partner_id: str | None = Field(None, max_length=20, description="Route to this partner shop instead of the country's directory florist")
 
 
 @app.post("/v1/orders", status_code=201, tags=["orders"], summary="Create a purchase order (payment activates when Stripe is approved)")
 def create_order(order: OrderIn):
     if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", order.email):
         raise HTTPException(status_code=422, detail="Invalid email address")
-    florist = _find_florist(order.country)
+    if order.partner_id:
+        with _db() as conn:
+            p = conn.execute("SELECT * FROM partners WHERE id = ? AND status = 'active'",
+                             (order.partner_id,)).fetchone()
+        if p is None:
+            raise HTTPException(status_code=404, detail="Unknown partner shop")
+        florist = {"iso2": p["iso2"], "country": p["country"], "name": p["shop_name"],
+                   "city": p["city"], "website": p["website"] or p["instagram"] or ""}
+    else:
+        florist = _find_florist(order.country)
     oid = "YF-" + uuid.uuid4().hex[:8].upper()
     session_id, checkout_url = None, None
     if STRIPE_SECRET_KEY:
@@ -465,8 +695,8 @@ def create_order(order: OrderIn):
             " item_title, item_price, item_currency, item_url,"
             " stripe_session_id, checkout_url,"
             " recipient_name, recipient_phone, street, city, postal_code,"
-            " delivery_instructions, lat, lng, delivery_time, confirm_time_with_customer)"
-            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " delivery_instructions, lat, lng, delivery_time, confirm_time_with_customer, partner_id)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (
                 oid,
                 datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -495,6 +725,7 @@ def create_order(order: OrderIn):
                 order.lng,
                 order.delivery_time,
                 int(order.confirm_time_with_customer),
+                order.partner_id,
             ),
         )
     item = None

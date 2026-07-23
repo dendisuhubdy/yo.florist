@@ -915,7 +915,7 @@
         <li>Optional promoted placement, subscriptions &amp; corporate gifting</li>
         <li>You keep your brand, your designs, your delivery radius</li>
       </ul>
-      <a href="#" class="btn ghost">Become a partner florist</a>
+      <a href="/sell" class="btn ghost">Become a partner florist</a>
     </div>
     <div class="florist-card reveal d2">
       <p class="quote">“We're a two-person shop. We can't outrank the national brands on Google — but on here, our bouquets sit right next to theirs. And ours are fresher.”</p>
@@ -973,7 +973,7 @@
       <div>
         <h4>Partners</h4>
         <ul>
-          <li><a href="#florists">Become a florist partner</a></li>
+          <li><a href="/sell">Sell on yo.florist</a></li>
           <li><a href="#">Corporate gifting</a></li>
           <li><a href="#">Promoted placement</a></li>
         </ul>
@@ -1049,7 +1049,7 @@
           <div class="amount" style="font-size:1.15rem">${price}</div>
           <button class="visit-link order" type="button"
             data-iso2="${esc(m.iso2)}" data-florist="${esc(m.name)}" data-country="${esc(m.country)}" data-city="${esc(m.city)}" data-website="${esc(m.website)}"
-            data-itemtitle="${esc(item.title)}" data-itemprice="${esc(item.price)}" data-itemcurrency="${esc(item.currency || "")}" data-itemurl="${esc(item.url || "")}" data-itemimage="${esc(item.image || "")}">Order&nbsp;🌸</button>
+            data-itemtitle="${esc(item.title)}" data-itemprice="${esc(item.price)}" data-itemcurrency="${esc(item.currency || "")}" data-itemurl="${esc(item.url || "")}" data-itemimage="${esc(item.image || "")}" data-partnerid="${esc(item.partner_id || "")}">Order&nbsp;🌸</button>
         </div>
       </div>`;
   }
@@ -1091,6 +1091,7 @@
       p.set("currency", ctx.itemcurrency || "");
       if (ctx.itemurl) p.set("itemurl", ctx.itemurl);
       if (ctx.itemimage) p.set("image", ctx.itemimage);
+      if (ctx.partnerid) p.set("partner_id", ctx.partnerid);
     }
     const d = document.getElementById("date").value;
     if (d) p.set("date", d);

@@ -235,6 +235,7 @@
     fcity: P.get("fcity") || "", website: P.get("website") || "",
     title: P.get("title") || "", price: parseFloat(P.get("price")) || null,
     currency: P.get("currency") || "", itemurl: P.get("itemurl") || "", image: P.get("image") || "",
+    partner_id: P.get("partner_id") || "",
   };
   if (!ctx.country) location.replace("/flowers");
   const isItem = Boolean(ctx.title && ctx.price);
@@ -348,6 +349,7 @@
           item_price: isItem ? ctx.price : null,
           item_currency: isItem ? (ctx.currency || null) : null,
           item_url: isItem ? (ctx.itemurl || null) : null,
+          partner_id: ctx.partner_id || null,
           recipient_name: el("r-name").value.trim(),
           recipient_phone: el("r-phone").value.trim(),
           street: addr.value.trim(),

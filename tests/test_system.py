@@ -23,20 +23,24 @@ def get(url, headers=None):
         return r.status, dict(r.headers), r.read()
 
 
-def get_json(url):
-    status, headers, body = get(url)
-    return status, headers, json.loads(body)
+def get_json(url, headers=None):
+    status, hdrs, body = get(url, headers)
+    return status, hdrs, json.loads(body)
 
 
-def post_json(url, payload):
+def send_json(url, payload, method="POST", headers=None):
     req = urllib.request.Request(
         url,
-        data=json.dumps(payload).encode(),
-        headers={"Content-Type": "application/json"},
-        method="POST",
+        data=json.dumps(payload).encode() if payload is not None else None,
+        headers={"Content-Type": "application/json", **(headers or {})},
+        method=method,
     )
     with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
         return r.status, json.loads(r.read())
+
+
+def post_json(url, payload, headers=None):
+    return send_json(url, payload, "POST", headers)
 
 
 def expect_http_error(testcase, code, fn, *args):
@@ -222,6 +226,92 @@ class TestGeo(unittest.TestCase):
             self.assertEqual(r.status, 200)
             allowed = r.headers.get("access-control-allow-methods", "")
             self.assertIn("POST", allowed)
+
+
+class TestPartners(unittest.TestCase):
+    """Self-serve seller flow: register → list items → sell → clean up.
+
+    Uses Nauru: it has no directory florist or scraped catalog, which also
+    proves partner shops can cover directory gaps.
+    """
+
+    def test_partner_lifecycle(self):
+        status, reg = post_json(API + "/v1/partners", {
+            "shop_name": "System Test Blooms",
+            "country": "Nauru",
+            "city": "Yaren",
+            "email": "systemtest@yo.florist",
+            "instagram": "@systemtestblooms",
+        })
+        self.assertEqual(status, 201)
+        key, pid = reg["partner_key"], reg["partner"]["id"]
+        self.assertTrue(key.startswith("yfk_"))
+        auth = {"X-Partner-Key": key}
+
+        status, item = post_json(API + "/v1/partners/items", {
+            "title": "Test Frangipani Bundle",
+            "price": 39.0,
+            "currency": "aud",
+        }, headers=auth)
+        self.assertEqual(status, 201)
+        item_id = item["id"]
+
+        _, _, mine = get_json(API + "/v1/partners/items", headers=auth)
+        self.assertEqual(mine["count"], 1)
+        self.assertEqual(mine["items"][0]["currency"], "AUD")
+
+        # live in the public catalog, honestly attributed as a partner shop
+        _, _, cat = get_json(API + "/v1/catalog?country=NR")
+        self.assertEqual(cat["florist"], "System Test Blooms")
+        live = [i for i in cat["items"] if i.get("partner_id") == pid]
+        self.assertEqual(len(live), 1)
+        self.assertTrue(live[0]["source"]["partner"])
+        self.assertIn("instagram.com", live[0]["source"]["website"])
+
+        # orders route to the partner shop
+        status, order = post_json(API + "/v1/orders", {
+            "country": "NR",
+            "partner_id": pid,
+            "customer_name": "System Test",
+            "email": "systemtest@yo.florist",
+            "address": "1 Test Lane, Yaren",
+            "item_title": "Test Frangipani Bundle",
+            "item_price": 39.0,
+            "item_currency": "AUD",
+        })
+        self.assertEqual(status, 201)
+        self.assertEqual(order["routed_to"]["florist"], "System Test Blooms")
+
+        status, _ = send_json(API + f"/v1/partners/items/{item_id}", {
+            "title": "Test Frangipani Bundle",
+            "price": 45.0,
+            "currency": "AUD",
+        }, method="PUT", headers=auth)
+        self.assertEqual(status, 200)
+
+        status, _ = send_json(API + f"/v1/partners/items/{item_id}", None, method="DELETE", headers=auth)
+        self.assertEqual(status, 200)
+        _, _, cat = get_json(API + "/v1/catalog?country=NR")
+        self.assertEqual([i for i in cat["items"] if i.get("partner_id") == pid], [])
+
+    def test_bad_partner_key_401(self):
+        expect_http_error(self, 401, get_json, API + "/v1/partners/me", {"X-Partner-Key": "yfk_wrong"})
+
+    def test_partner_unknown_country_404(self):
+        with self.assertRaises(urllib.error.HTTPError) as ctx:
+            post_json(API + "/v1/partners", {
+                "shop_name": "Nowhere Blooms", "country": "Atlantis",
+                "city": "Nowhere", "email": "systemtest@yo.florist",
+            })
+        self.assertEqual(ctx.exception.code, 404)
+
+    def test_sell_and_dashboard_pages_serve(self):
+        status, _, body = get(SITE + "/sell")
+        self.assertEqual(status, 200)
+        self.assertIn("Sell on yo.florist", body.decode())
+        status, _, body = get(SITE + "/dashboard")
+        self.assertEqual(status, 200)
+        self.assertIn("Partner dashboard", body.decode())
 
 
 class TestOrders(unittest.TestCase):

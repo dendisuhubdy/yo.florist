@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sell on Flower Aggregator — reach customers comparing florists in your city</title>
+<meta name="description" content="List your bouquets on yo.florist for free. No listing fees, no tech setup — upload your catalog in minutes and get orders with delivery details ready to fulfil.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,300..900&family=Karla:ital,wght@0,300..800;1,300..800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #f6f1e6; --paper-deep: #efe7d6; --ink: #22301f; --green: #2f4a32;
+    --green-soft: #5c7a54; --poppy: #d94f2b; --poppy-deep: #b93d1e; --rose: #e9b4c0;
+    --gold: #c8973e; --line: rgba(34, 48, 31, 0.16);
+    --serif: "Fraunces", Georgia, serif; --sans: "Karla", "Helvetica Neue", sans-serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: var(--sans); background: var(--paper); color: var(--ink); line-height: 1.6; -webkit-font-smoothing: antialiased; }
+  ::selection { background: var(--poppy); color: var(--paper); }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 28px; }
+
+  header { position: sticky; top: 0; z-index: 100; background: color-mix(in srgb, var(--paper) 88%, transparent); backdrop-filter: blur(12px); border-bottom: 1px solid var(--line); }
+  .nav { display: flex; align-items: center; justify-content: space-between; padding: 18px 28px; max-width: 1080px; margin: 0 auto; }
+  .logo { display: flex; align-items: center; gap: 10px; font-family: var(--serif); font-weight: 600; font-size: 1.25rem; color: var(--ink); text-decoration: none; }
+  .logo svg { width: 30px; height: 30px; }
+  .nav a.plain { color: var(--ink); text-decoration: none; font-size: 0.92rem; font-weight: 600; }
+  .nav a.plain:hover { color: var(--poppy); }
+
+  .kicker { display: inline-flex; align-items: center; gap: 8px; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: var(--poppy); margin-bottom: 18px; }
+  .kicker::before { content: ""; width: 28px; height: 1.5px; background: var(--poppy); }
+  h1 { font-family: var(--serif); font-size: clamp(2.3rem, 4.8vw, 3.6rem); font-weight: 500; letter-spacing: -0.02em; line-height: 1.06; margin-bottom: 18px; }
+  h1 em { font-style: italic; font-weight: 400; color: var(--poppy); }
+  .hero { padding: 70px 0 40px; max-width: 720px; }
+  .hero p { font-size: 1.1rem; color: color-mix(in srgb, var(--ink) 75%, transparent); }
+
+  .points { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; padding: 26px 0 40px; }
+  .point { border-top: 1.5px solid var(--ink); padding-top: 16px; }
+  .point h3 { font-family: var(--serif); font-size: 1.2rem; font-weight: 550; margin-bottom: 6px; }
+  .point p { font-size: 0.92rem; color: color-mix(in srgb, var(--ink) 70%, transparent); }
+
+  .signup { display: grid; grid-template-columns: 1fr 1fr; gap: 44px; align-items: start; padding: 20px 0 90px; }
+  .panel { background: #fff; border: 1.5px solid var(--ink); border-radius: 20px; padding: 30px 32px; box-shadow: 8px 8px 0 var(--rose); }
+  .panel h2 { font-family: var(--serif); font-size: 1.5rem; font-weight: 550; margin-bottom: 4px; }
+  .panel .hint { font-size: 0.85rem; color: color-mix(in srgb, var(--ink) 60%, transparent); }
+  label { display: block; font-size: 0.7rem; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: var(--green-soft); margin: 15px 0 4px; }
+  label .req { color: var(--poppy); }
+  input, textarea { width: 100%; padding: 11px 14px; border: 1.5px solid var(--ink); border-radius: 12px; font-family: var(--sans); font-size: 0.95rem; background: #fff; color: var(--ink); outline: none; }
+  input:focus, textarea:focus { border-color: var(--poppy); }
+  textarea { resize: vertical; min-height: 64px; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .btn { display: inline-block; background: var(--poppy); color: #fff; font-weight: 800; font-size: 0.98rem; padding: 14px 30px; border-radius: 100px; border: none; cursor: pointer; transition: background 0.2s, transform 0.2s; margin-top: 20px; }
+  .btn:hover { background: var(--poppy-deep); transform: translateY(-2px); }
+  .btn:disabled { opacity: 0.6; cursor: wait; }
+  .error-line { color: var(--poppy-deep); font-size: 0.88rem; font-weight: 700; margin-top: 10px; min-height: 1.3em; }
+
+  .steps h2 { font-family: var(--serif); font-size: 1.5rem; font-weight: 550; margin-bottom: 16px; }
+  .step { display: flex; gap: 16px; padding: 14px 0; border-bottom: 1px solid var(--line); }
+  .step .n { font-family: var(--serif); font-style: italic; color: var(--poppy); flex-shrink: 0; }
+  .step p { font-size: 0.95rem; color: color-mix(in srgb, var(--ink) 75%, transparent); }
+  .step strong { color: var(--ink); }
+
+  .key-panel { display: none; }
+  .key-panel.show { display: block; }
+  .key-box {
+    font-family: ui-monospace, Menlo, monospace; font-size: 0.9rem; word-break: break-all;
+    background: var(--paper-deep); border: 1.5px dashed var(--green-soft); border-radius: 12px;
+    padding: 14px 16px; margin: 14px 0;
+  }
+  .warn { font-size: 0.85rem; font-weight: 700; color: var(--poppy-deep); }
+
+  @media (max-width: 860px) { .points, .signup, .row2 { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<header>
+  <nav class="nav">
+    <a class="logo" href="/">
+      <svg viewBox="0 0 40 40" fill="none" aria-hidden="true">
+        <circle cx="20" cy="13" r="6" fill="#d94f2b"/><circle cx="13" cy="20" r="6" fill="#e9b4c0"/>
+        <circle cx="27" cy="20" r="6" fill="#c8973e"/><circle cx="20" cy="20" r="4" fill="#22301f"/>
+        <path d="M20 24 C20 30 18 34 16 37 M20 24 C20 30 22 34 24 37" stroke="#2f4a32" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      Flower&nbsp;Aggregator
+    </a>
+    <a class="plain" href="/dashboard">Already a partner? Open your dashboard →</a>
+  </nav>
+</header>
+
+<div class="wrap">
+  <section class="hero">
+    <span class="kicker">Sell on yo.florist</span>
+    <h1>Your bouquets, in front of people <em>already buying.</em></h1>
+    <p>Customers come to yo.florist to compare and order flowers in your city. List your catalog — even if your shop only lives on Instagram — and get orders with the recipient's address, phone and delivery time, ready to fulfil.</p>
+  </section>
+
+  <div class="points">
+    <div class="point"><h3>Free to list</h3><p>No listing fees, no subscription, no tech setup. We only earn a commission on orders we bring you.</p></div>
+    <div class="point"><h3>Made for Instagram shops</h3><p>No website needed — upload photos straight from your phone and your catalog is live with its own prices in your currency.</p></div>
+    <div class="point"><h3>You stay the florist</h3><p>Every listing names your shop and links to your page. You make and deliver the flowers; we send you the customers.</p></div>
+  </div>
+
+  <div class="signup">
+    <div>
+      <div class="panel" id="signup-panel">
+        <h2>Open your shop</h2>
+        <p class="hint">Takes about a minute. Your catalog dashboard opens right after.</p>
+        <form id="signup-form" novalidate>
+          <label for="p-shop">Shop name <span class="req">*</span></label>
+          <input id="p-shop" required minlength="2" maxlength="120" placeholder="e.g. Bloom & Petal Studio">
+          <div class="row2">
+            <div>
+              <label for="p-country">Country <span class="req">*</span></label>
+              <input id="p-country" required minlength="2" maxlength="60" placeholder="e.g. Indonesia">
+            </div>
+            <div>
+              <label for="p-city">City <span class="req">*</span></label>
+              <input id="p-city" required minlength="2" maxlength="120" placeholder="e.g. Denpasar">
+            </div>
+          </div>
+          <div class="row2">
+            <div>
+              <label for="p-email">Email <span class="req">*</span></label>
+              <input id="p-email" type="email" required>
+            </div>
+            <div>
+              <label for="p-phone">Phone / WhatsApp</label>
+              <input id="p-phone" type="tel" maxlength="40">
+            </div>
+          </div>
+          <div class="row2">
+            <div>
+              <label for="p-instagram">Instagram</label>
+              <input id="p-instagram" maxlength="200" placeholder="@yourshop">
+            </div>
+            <div>
+              <label for="p-website">Website</label>
+              <input id="p-website" maxlength="500" placeholder="https:// (optional)">
+            </div>
+          </div>
+          <label for="p-desc">About your shop</label>
+          <textarea id="p-desc" maxlength="1000" placeholder="Specialties, delivery area, years in business…"></textarea>
+          <button class="btn" type="submit" id="p-submit">Create my shop</button>
+          <div class="error-line" id="p-error"></div>
+        </form>
+      </div>
+
+      <div class="panel key-panel" id="key-panel">
+        <h2>Welcome aboard 🌸</h2>
+        <p class="hint">Your shop <strong id="k-shop"></strong> is registered. This is your <strong>partner key</strong> — it's your login for the catalog dashboard.</p>
+        <div class="key-box" id="k-key"></div>
+        <p class="warn">Shown only once — save it somewhere safe now (notes app, password manager).</p>
+        <a class="btn" id="k-go" href="/dashboard">Open my dashboard →</a>
+      </div>
+    </div>
+
+    <div class="steps">
+      <h2>How it works</h2>
+      <div class="step"><span class="n">01 —</span><p><strong>Register your shop</strong> with your city and contact details.</p></div>
+      <div class="step"><span class="n">02 —</span><p><strong>Upload your bouquets</strong> — a photo, a name, and your price in your currency. Straight from your phone is fine.</p></div>
+      <div class="step"><span class="n">03 —</span><p><strong>Appear instantly</strong> on yo.florist next to the biggest brands, with your shop named on every card.</p></div>
+      <div class="step"><span class="n">04 —</span><p><strong>Get orders, not messages</strong> — paid orders arrive with the recipient's address, phone, delivery date and card message. You make and deliver.</p></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const API = "https://api.yo.florist";
+  const el = id => document.getElementById(id);
+
+  el("signup-form").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const form = el("signup-form");
+    if (!form.checkValidity()) { form.reportValidity(); return; }
+    const btn = el("p-submit");
+    btn.disabled = true; btn.textContent = "Creating…"; el("p-error").textContent = "";
+    try {
+      const r = await fetch(`${API}/v1/partners`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          shop_name: el("p-shop").value.trim(),
+          country: el("p-country").value.trim(),
+          city: el("p-city").value.trim(),
+          email: el("p-email").value.trim(),
+          phone: el("p-phone").value.trim() || null,
+          instagram: el("p-instagram").value.trim() || null,
+          website: el("p-website").value.trim() || null,
+          description: el("p-desc").value.trim() || null,
+        }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.detail || "Registration failed");
+      localStorage.setItem("yf_partner_key", data.partner_key);
+      el("k-shop").textContent = data.partner.shop_name;
+      el("k-key").textContent = data.partner_key;
+      el("signup-panel").style.display = "none";
+      el("key-panel").classList.add("show");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (e) {
+      el("p-error").textContent = typeof e.message === "string" && e.message.length < 140
+        ? e.message : "Couldn't register right now — please try again.";
+      btn.disabled = false; btn.textContent = "Create my shop";
+    }
+  });
+</script>
+</body>
+</html>

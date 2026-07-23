@@ -164,7 +164,7 @@
             <button class="order" type="button"
               data-iso2="${esc(item.iso2 || "")}" data-website="${esc(item.source.website)}"
               data-florist="${esc(item.source.florist)}" data-city="${esc(item.source.city)}" data-country="${esc(item.source.country)}"
-              data-itemtitle="${esc(item.title)}" data-itemprice="${esc(item.price)}" data-itemcurrency="${esc(item.currency || "")}" data-itemurl="${esc(item.url || "")}" data-itemimage="${esc(item.image || "")}">Order</button>
+              data-itemtitle="${esc(item.title)}" data-itemprice="${esc(item.price)}" data-itemcurrency="${esc(item.currency || "")}" data-itemurl="${esc(item.url || "")}" data-itemimage="${esc(item.image || "")}" data-partnerid="${esc(item.partner_id || "")}">Order</button>
           </div>
         </div>
       </article>`;
@@ -204,6 +204,7 @@
     });
     if (ctx.itemurl) p.set("itemurl", ctx.itemurl);
     if (ctx.itemimage) p.set("image", ctx.itemimage);
+    if (ctx.partnerid) p.set("partner_id", ctx.partnerid);
     window.location.href = `/checkout?${p.toString()}`;
   }
 
