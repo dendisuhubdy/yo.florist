@@ -229,9 +229,10 @@
           <div class="tr"><span>Bouquet</span><span id="sum-price"></span></div>
           <div class="tr"><span>Delivery</span><span>Included</span></div>
           <div class="tr grand"><span>Total</span><span id="sum-total"></span></div>
+          <div class="tr" id="local-row" hidden style="color:color-mix(in srgb, var(--ink) 60%, transparent)"><span>≈ in your currency</span><span id="sum-local"></span></div>
         </div>
       </div>
-      <div class="stripe-note">💳 <strong>Secure payment by Stripe.</strong> You'll be redirected to Stripe to pay. The florist is engaged the moment payment clears.</div>
+      <div class="stripe-note">💳 <strong>Secure payment by Stripe.</strong> You'll be redirected to Stripe to pay. The florist is engaged the moment payment clears.<span id="charge-note"></span></div>
       <div class="place-row">
         <button class="btn" type="submit" id="place">Place order &amp; pay</button>
         <div class="error-line" id="error-line"></div>
@@ -257,11 +258,36 @@
   const isItem = Boolean(ctx.title && ctx.price);
 
   function money(v, cur) { return cur ? `${cur} ${Number(v).toFixed(2)}` : `$${Number(v).toFixed(2)}`; }
+
+  // display-only conversion into the visitor's currency (from their IP);
+  // the Stripe charge stays in the florist's own currency
+  let LOCALE = null;
+  fetch(`${API}/v1/locale`).then(r => r.json()).then(d => { LOCALE = d; refreshTotals(); }).catch(() => {});
+  function fmtLocal(amount, from) {
+    if (!LOCALE || !LOCALE.currency || !LOCALE.rates) return null;
+    const R = LOCALE.rates, to = LOCALE.currency;
+    from = String(from || "").toUpperCase();
+    if (!from || from === to || !R[from] || !R[to]) return null;
+    const v = Number(amount) / R[from] * R[to];
+    if (!isFinite(v) || v <= 0) return null;
+    try {
+      return new Intl.NumberFormat(undefined, { style: "currency", currency: to, maximumFractionDigits: v >= 100 ? 0 : 2 }).format(v);
+    } catch { return null; }
+  }
+
   function refreshTotals() {
     const amount = isItem ? ctx.price : parseFloat(el("budget").value);
     const cur = isItem ? ctx.currency : "USD";
     el("sum-price").textContent = money(amount, cur);
     el("sum-total").textContent = money(amount, cur);
+    const local = fmtLocal(amount, cur || "USD");
+    el("local-row").hidden = !local;
+    if (local) {
+      el("sum-local").textContent = `≈ ${local}`;
+      el("charge-note").textContent = ` You'll be charged ${money(amount, cur)} — the ${LOCALE.currency} figure is an estimate at today's rate.`;
+    } else {
+      el("charge-note").textContent = "";
+    }
   }
 
   el("sum-title").textContent = isItem ? ctx.title : `Florist's choice bouquet — ${ctx.country}`;

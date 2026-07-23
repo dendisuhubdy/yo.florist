@@ -1043,6 +1043,22 @@
     return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   }
 
+  // display-only conversion into the visitor's currency (from their IP);
+  // orders are always charged in the florist's own currency
+  let LOCALE = null;
+  fetch(`${API}/v1/locale`).then(r => r.json()).then(d => { LOCALE = d; }).catch(() => {});
+  function fmtLocal(amount, from) {
+    if (!LOCALE || !LOCALE.currency || !LOCALE.rates) return null;
+    const R = LOCALE.rates, to = LOCALE.currency;
+    from = String(from || "").toUpperCase();
+    if (!from || from === to || !R[from] || !R[to]) return null;
+    const v = Number(amount) / R[from] * R[to];
+    if (!isFinite(v) || v <= 0) return null;
+    try {
+      return new Intl.NumberFormat(undefined, { style: "currency", currency: to, maximumFractionDigits: v >= 100 ? 0 : 2 }).format(v);
+    } catch { return null; }
+  }
+
   function floristCard(m, i, best) {
     return `
       <div class="compare-card${best ? " best" : ""}">
@@ -1059,7 +1075,10 @@
   }
 
   function itemCard(m, item, i, best) {
-    const price = item.currency ? `${esc(item.currency)} ${esc(item.price)}` : `${esc(item.price)}`;
+    const local = fmtLocal(item.price, item.currency);
+    const price = local
+      ? `≈ ${esc(local)}<span style="display:block;font-size:0.68rem;font-weight:600;opacity:0.6">${esc(item.currency)} ${esc(item.price)}</span>`
+      : (item.currency ? `${esc(item.currency)} ${esc(item.price)}` : `${esc(item.price)}`);
     const img = item.image
       ? `<img class="thumb" src="${esc(item.image)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">`
       : dotSvg(i);
@@ -1073,7 +1092,7 @@
         <div class="compare-price order-actions">
           <div class="amount" style="font-size:1.15rem">${price}</div>
           <button class="visit-link order" type="button"
-            data-iso2="${esc(m.iso2)}" data-florist="${esc(m.name)}" data-country="${esc(m.country)}" data-city="${esc(m.city)}" data-website="${esc(m.website)}"
+            data-iso2="${esc(m.iso2)}" data-florist="${esc(item.source.florist)}" data-country="${esc(item.source.country)}" data-city="${esc(item.source.city)}" data-website="${esc(item.source.website)}"
             data-itemtitle="${esc(item.title)}" data-itemprice="${esc(item.price)}" data-itemcurrency="${esc(item.currency || "")}" data-itemurl="${esc(item.url || "")}" data-itemimage="${esc(item.image || "")}" data-partnerid="${esc(item.partner_id || "")}">Order&nbsp;🌸</button>
         </div>
       </div>`;

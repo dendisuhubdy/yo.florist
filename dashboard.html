@@ -167,8 +167,14 @@
 
     <div class="panel">
       <h2>Your live catalog <span class="muted" id="item-count"></span></h2>
-      <p class="muted" style="margin-bottom:16px">These appear instantly on <a href="/flowers" target="_blank">yo.florist/flowers</a> with your shop named on every card.</p>
+      <p class="muted" style="margin-bottom:16px">These appear on <a href="/flowers" target="_blank">yo.florist/flowers</a> with your shop named on every card.</p>
       <div class="items" id="items"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Your orders <span class="muted" id="order-count"></span></h2>
+      <p class="muted" style="margin-bottom:16px">Paid orders land here and in your email inbox the moment payment clears — with everything you need to make and deliver.</p>
+      <div id="orders"></div>
     </div>
   </div>
 </div>
@@ -198,6 +204,7 @@
           '<div class="panel" style="border-color:#c8973e;background:#fdf6e6">⏳ <strong>Your shop is under review.</strong> Keep building your catalog — everything goes live the moment you\'re approved.</div>');
       }
       loadItems();
+      loadOrders();
     } catch (e) {
       localStorage.removeItem("yf_partner_key"); KEY = "";
       el("gate-error").textContent = (e && e.message) || "That key didn't work — check it and try again.";
@@ -249,6 +256,35 @@
       await fetch(`${API}/v1/partners/items/${b.dataset.del}`, { method: "DELETE", headers: H() });
       loadItems();
     }));
+  }
+
+  async function loadOrders() {
+    try {
+      const r = await fetch(`${API}/v1/partners/orders`, { headers: H() });
+      if (!r.ok) return;
+      const d = await r.json();
+      el("order-count").textContent = `— ${d.count} paid`;
+      el("orders").innerHTML = d.orders.map(o => {
+        const what = o.item_title
+          ? `${esc(o.item_title)} · ${esc(o.item_currency || "")} ${esc(o.item_price ?? "")}`
+          : `Florist's choice · $${esc(o.budget_usd ?? 65)} USD budget`;
+        const addr = [o.street, o.city, o.postal_code].filter(Boolean).map(esc).join(", ") || esc(o.address || "");
+        const when = o.confirm_time_with_customer
+          ? `${esc(o.delivery_date || "")} · ☎️ call the recipient to agree a time`
+          : [o.delivery_date, o.delivery_time].filter(Boolean).map(esc).join(" · ");
+        return `
+        <div style="border:1.5px solid var(--ink); border-radius:14px; padding:14px 16px; margin-bottom:12px">
+          <div style="display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap">
+            <strong>${esc(o.id)}</strong><span class="muted">${esc((o.created_at || "").slice(0, 10))}</span>
+          </div>
+          <div>${what}</div>
+          <div class="muted">To: ${esc(o.recipient_name || "")} · ${esc(o.recipient_phone || "")}<br>
+            ${addr}<br>Deliver: ${when}
+            ${o.delivery_instructions ? `<br>Note: ${esc(o.delivery_instructions)}` : ""}
+            ${o.message ? `<br>Card: “${esc(o.message)}”` : ""}</div>
+        </div>`;
+      }).join("") || '<p class="muted">No paid orders yet — they\'ll show up here the moment payment clears.</p>';
+    } catch {}
   }
 
   function setPreview(url) {

@@ -68,6 +68,7 @@
   .item .row { margin-top: auto; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
   .item .price { font-family: var(--serif); font-size: 1.25rem; font-weight: 600; }
   .item .price .cur { font-size: 0.72rem; font-weight: 800; letter-spacing: 0.08em; color: var(--green-soft); margin-right: 4px; font-family: var(--sans); }
+  .item .price .orig { display: block; font-family: var(--sans); font-size: 0.72rem; font-weight: 600; color: color-mix(in srgb, var(--ink) 55%, transparent); letter-spacing: 0.02em; }
   .item .order { background: var(--poppy); color: #fff; font-weight: 700; font-size: 0.82rem; padding: 9px 18px; border-radius: 100px; border: none; cursor: pointer; transition: background 0.2s; }
   .item .order:hover { background: var(--poppy-deep); }
 
@@ -141,16 +142,39 @@
 </main>
 
 <footer>
-  <div class="wrap">© 2026 Flower Aggregator · prices update daily from each florist's own site · <a href="/">yo.florist</a></div>
+  <div class="wrap">© 2026 Flower Aggregator · prices update daily from each florist's own site · local-currency estimates at today's rate · <a href="https://db-ip.com" rel="noopener">IP Geolocation by DB-IP</a> · <a href="/">yo.florist</a></div>
 </footer>
 
 <script>
   const API = "https://api.yo.florist";
   const LIMIT = 48;
   let offset = 0, country = "", total = 0, current = null;
+  let LOCALE = null;
 
   const el = id => document.getElementById(id);
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+  // display-only conversion into the visitor's currency (from their IP);
+  // the order itself is always charged in the florist's own currency
+  async function loadLocale() {
+    try { LOCALE = await (await fetch(`${API}/v1/locale`)).json(); } catch {}
+  }
+  function fmtLocal(amount, from) {
+    if (!LOCALE || !LOCALE.currency || !LOCALE.rates) return null;
+    const R = LOCALE.rates, to = LOCALE.currency;
+    from = String(from || "").toUpperCase();
+    if (!from || from === to || !R[from] || !R[to]) return null;
+    const v = Number(amount) / R[from] * R[to];
+    if (!isFinite(v) || v <= 0) return null;
+    try {
+      return new Intl.NumberFormat(undefined, { style: "currency", currency: to, maximumFractionDigits: v >= 100 ? 0 : 2 }).format(v);
+    } catch { return null; }
+  }
+  function priceHtml(amount, cur) {
+    const orig = cur ? `<span class="cur">${esc(cur)}</span>${esc(amount)}` : esc(amount);
+    const local = fmtLocal(amount, cur);
+    return local ? `≈ ${esc(local)}<span class="orig">${esc(cur)} ${esc(amount)}</span>` : orig;
+  }
 
   async function loadCountries() {
     try {
@@ -164,9 +188,7 @@
   }
 
   function card(item) {
-    const price = item.currency
-      ? `<span class="cur">${esc(item.currency)}</span>${esc(item.price)}`
-      : esc(item.price);
+    const price = priceHtml(item.price, item.currency);
     const pic = item.image
       ? `<img src="${esc(item.image)}" alt="${esc(item.title)}" loading="lazy" onerror="this.remove()">`
       : "";
@@ -228,7 +250,7 @@
   el("country-filter").addEventListener("change", (e) => { country = e.target.value; load(true); });
   el("more").addEventListener("click", () => load(false));
 
-  loadCountries().then(() => load(true));
+  Promise.all([loadCountries(), loadLocale()]).then(() => load(true));
 </script>
 </body>
 </html>

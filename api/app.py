@@ -5,13 +5,15 @@ import os
 import re
 import secrets
 import sqlite3
+import threading
+import time
 import unicodedata
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
 import requests
-from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, UploadFile
+from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
@@ -32,8 +34,23 @@ STRIPE_SECRET_KEY = os.environ.get("FLOWER_STRIPE_SECRET_KEY", "")
 GOOGLE_MAPS_KEY = os.environ.get("PLACES_GO_SDK", "")
 # Admin key for the moderation dashboard at yo.florist/admin (env file only)
 ADMIN_KEY = os.environ.get("YF_ADMIN_KEY", "")
+# Resend (transactional email): partner welcome/approval + paid-order handoff.
+# When unset, emails are skipped and orders stay visible in /admin only.
+RESEND_API_KEY = os.environ.get("YF_RESEND_API_KEY", "")
+EMAIL_FROM = "yo.florist <orders@yo.florist>"
+ADMIN_EMAIL = os.environ.get("YF_ADMIN_EMAIL", "dendi.suhubdy@gmail.com")
 STRIPE_API = "https://api.stripe.com/v1"
 SITE_URL = "https://yo.florist"
+# IP → country (DB-IP Lite, monthly file, "IP Geolocation by DB-IP" attribution)
+GEOIP_FILE = Path("/opt/yoflorist/data/dbip-country-lite.mmdb")
+# daily USD-based FX rates (open.er-api.com, keyless), cached in memory + on disk
+FX_FILE = Path("/opt/yoflorist/data/fx.json")
+FX_TTL = 12 * 3600
+
+try:
+    import maxminddb
+except ImportError:  # dev machines without python3-maxminddb: locale falls back
+    maxminddb = None
 # currencies Stripe treats as having no minor unit (charge amounts are whole)
 ZERO_DECIMAL = {
     "bif", "clp", "djf", "gnf", "jpy", "kmf", "krw", "mga",
@@ -120,14 +137,24 @@ def health():
 
 @app.get("/v1/countries", tags=["directory"], summary="List covered countries")
 def countries():
-    data = sorted(_load(), key=lambda e: e["country"])
-    return {
-        "count": len(data),
-        "countries": [
-            {"iso2": e["iso2"], "country": e["country"], "city": e.get("city")}
-            for e in data
-        ],
-    }
+    _load()
+    out = [
+        {"iso2": e["iso2"], "country": e["country"], "city": e.get("city")}
+        for e in _cache["data"]
+    ]
+    # partner shops can cover countries the scraped directory doesn't
+    covered = {e["iso2"] for e in out}
+    by_iso = {e["iso2"]: e for e in _cache["raw"]}
+    with _db() as conn:
+        rows = conn.execute(
+            "SELECT DISTINCT p.iso2, p.city FROM partners p JOIN partner_items pi ON pi.partner_id = p.id"
+            " WHERE p.status = 'active' AND pi.status = 'active'").fetchall()
+    for iso2, city in rows:
+        if iso2 not in covered and iso2 in by_iso:
+            covered.add(iso2)
+            out.append({"iso2": iso2, "country": by_iso[iso2]["country"], "city": city})
+    out.sort(key=lambda e: e["country"])
+    return {"count": len(out), "countries": out}
 
 
 @app.get("/v1/florists", tags=["directory"], summary="Get the partner florist for a country")
@@ -148,8 +175,13 @@ def search(
 ):
     nq = _norm(q)
     tokens = {t for t in nq.replace(",", " ").split() if t}
+    # searchable = directory florists + gap countries covered only by partner shops
+    partner_isos = _partner_isos()
+    candidates = list(_load()) + [
+        e for e in _cache["raw"] if not e.get("name") and e["iso2"] in partner_isos
+    ]
     matches, seen = [], set()
-    for e in _load():
+    for e in candidates:
         hit = (
             _norm(e["country"]) in nq
             or e["iso2"].lower() in tokens
@@ -157,7 +189,11 @@ def search(
         )
         if hit and e["iso2"] not in seen:
             seen.add(e["iso2"])
-            matches.append({**e, "items": _items_for(e, limit=3)})
+            m = {**e, "items": _items_for(e, limit=3)}
+            if not m.get("name") and m["items"]:
+                src = m["items"][0]["source"]
+                m.update(name=src["florist"], city=src["city"], website=src["website"])
+            matches.append(m)
     return {"query": q, "date": date, "count": len(matches), "matches": matches}
 
 
@@ -210,6 +246,118 @@ def catalog(
         "offset": offset,
         "limit": limit,
         "items": everything[offset : offset + limit],
+    }
+
+
+# ─── visitor locale: IP → country → display currency + FX rates ───
+
+# grouped currency zones first, then one-offs; territories map to their parent currency
+_CURRENCY_ZONES = {
+    "EUR": "AD AT AX BE BL CY DE EE ES FI FR GF GP GR HR IE IT LT LU LV MC ME MF MQ MT NL PM PT RE SI SK SM VA XK YT",
+    "USD": "AS EC FM GU IO MH MP PA PR PW SV TC TL UM US VG VI ZW",
+    "XOF": "BJ BF CI GW ML NE SN TG",
+    "XAF": "CM CF CG GA GQ TD",
+    "XCD": "AG AI DM GD KN LC MS VC",
+    "XPF": "NC PF WF",
+    "GBP": "GB GG GS IM JE",
+    "AUD": "AU CC CX KI NF NR TV",
+    "NZD": "CK NU NZ PN TK",
+    "DKK": "DK FO GL",
+    "NOK": "BV NO SJ",
+    "CHF": "CH LI",
+    "MAD": "EH MA",
+    "ILS": "IL PS",
+    "ZAR": "ZA",
+}
+COUNTRY_CURRENCY = {iso: cur for cur, isos in _CURRENCY_ZONES.items() for iso in isos.split()}
+COUNTRY_CURRENCY.update({
+    "AF": "AFN", "AL": "ALL", "DZ": "DZD", "AO": "AOA", "AR": "ARS", "AM": "AMD", "AW": "AWG",
+    "AZ": "AZN", "BS": "BSD", "BH": "BHD", "BD": "BDT", "BB": "BBD", "BY": "BYN", "BZ": "BZD",
+    "BM": "BMD", "BT": "BTN", "BO": "BOB", "BA": "BAM", "BW": "BWP", "BR": "BRL", "BN": "BND",
+    "BG": "BGN", "BI": "BIF", "KH": "KHR", "CA": "CAD", "CV": "CVE", "KY": "KYD", "CL": "CLP",
+    "CN": "CNY", "CO": "COP", "KM": "KMF", "CD": "CDF", "CR": "CRC", "CU": "CUP", "CW": "ANG",
+    "CZ": "CZK", "DJ": "DJF", "DO": "DOP", "EG": "EGP", "ER": "ERN", "SZ": "SZL", "ET": "ETB",
+    "FJ": "FJD", "FK": "FKP", "GM": "GMD", "GE": "GEL", "GH": "GHS", "GI": "GIP", "GT": "GTQ",
+    "GN": "GNF", "GY": "GYD", "HT": "HTG", "HN": "HNL", "HK": "HKD", "HU": "HUF", "IS": "ISK",
+    "IN": "INR", "ID": "IDR", "IR": "IRR", "IQ": "IQD", "JM": "JMD", "JP": "JPY", "JO": "JOD",
+    "KZ": "KZT", "KE": "KES", "KW": "KWD", "KG": "KGS", "LA": "LAK", "LB": "LBP", "LR": "LRD",
+    "LS": "LSL", "LY": "LYD", "MO": "MOP", "MG": "MGA", "MW": "MWK", "MY": "MYR", "MV": "MVR",
+    "MR": "MRU", "MU": "MUR", "MX": "MXN", "MD": "MDL", "MN": "MNT", "MZ": "MZN", "MM": "MMK",
+    "NA": "NAD", "NP": "NPR", "NI": "NIO", "NG": "NGN", "KP": "KPW", "MK": "MKD", "OM": "OMR",
+    "PK": "PKR", "PG": "PGK", "PY": "PYG", "PE": "PEN", "PH": "PHP", "PL": "PLN", "QA": "QAR",
+    "RO": "RON", "RU": "RUB", "RW": "RWF", "WS": "WST", "SA": "SAR", "RS": "RSD", "SC": "SCR",
+    "SH": "SHP", "SL": "SLE", "SG": "SGD", "SB": "SBD", "SO": "SOS", "KR": "KRW", "SS": "SSP",
+    "LK": "LKR", "SD": "SDG", "SR": "SRD", "SE": "SEK", "SY": "SYP", "TW": "TWD", "TJ": "TJS",
+    "TZ": "TZS", "TH": "THB", "TO": "TOP", "TT": "TTD", "TN": "TND", "TR": "TRY", "TM": "TMT",
+    "UG": "UGX", "UA": "UAH", "AE": "AED", "UY": "UYU", "UZ": "UZS", "VU": "VUV", "VE": "VES",
+    "VN": "VND", "YE": "YER", "ZM": "ZMW",
+})
+
+_geoip = {"reader": None, "tried": False}
+_fx_cache = {"fetched": 0.0, "rates": None}
+
+
+def _ip_country(request: Request) -> str | None:
+    """Country ISO2 for the calling IP — X-Real-IP is set by nginx from the socket."""
+    if maxminddb is None or not GEOIP_FILE.exists():
+        return None
+    if _geoip["reader"] is None and not _geoip["tried"]:
+        _geoip["tried"] = True
+        try:
+            _geoip["reader"] = maxminddb.open_database(str(GEOIP_FILE))
+        except Exception as exc:
+            print(f"geoip open failed: {exc}", flush=True)
+    if _geoip["reader"] is None:
+        return None
+    ip = (request.headers.get("x-real-ip")
+          or (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
+          or (request.client.host if request.client else ""))
+    try:
+        hit = _geoip["reader"].get(ip)
+        return hit["country"]["iso_code"] if hit else None
+    except (ValueError, KeyError, TypeError):
+        return None
+
+
+def _fx_rates() -> dict | None:
+    """USD-based rates, refreshed every 12h; last good copy persists across restarts."""
+    now = time.time()
+    if _fx_cache["rates"] and now - _fx_cache["fetched"] < FX_TTL:
+        return _fx_cache["rates"]
+    try:
+        r = requests.get("https://open.er-api.com/v6/latest/USD", timeout=10)
+        js = r.json()
+        if js.get("result") == "success" and js.get("rates"):
+            _fx_cache.update(fetched=now, rates=js["rates"])
+            FX_FILE.parent.mkdir(parents=True, exist_ok=True)
+            FX_FILE.write_text(json.dumps({"fetched": now, "rates": js["rates"]}))
+            return js["rates"]
+    except (requests.RequestException, ValueError) as exc:
+        print(f"fx fetch failed: {exc}", flush=True)
+    if _fx_cache["rates"]:  # stale beats none
+        return _fx_cache["rates"]
+    try:
+        disk = json.loads(FX_FILE.read_text())
+        _fx_cache.update(fetched=disk["fetched"], rates=disk["rates"])
+        return disk["rates"]
+    except (OSError, ValueError, KeyError):
+        return None
+
+
+@app.get("/v1/locale", tags=["geo"], summary="Visitor's country + display currency, with FX rates for client-side conversion")
+def locale(request: Request, country: str | None = Query(None, max_length=2, description="Override the IP-derived ISO-2 country (e.g. for testing)")):
+    iso2 = (country or "").upper() or _ip_country(request)
+    currency = COUNTRY_CURRENCY.get(iso2 or "")
+    rates = _fx_rates()
+    if currency and rates and currency not in rates:
+        currency = None
+    return {
+        "country": iso2,
+        "currency": currency,  # null → show shop prices as-is
+        "base": "USD",
+        "rates": rates,
+        "note": "Display conversion only — orders are charged in the florist's own currency.",
+        "attribution": "IP Geolocation by DB-IP (db-ip.com)",
     }
 
 
@@ -342,7 +490,8 @@ class PartnerIn(BaseModel):
 
 class PartnerItemIn(BaseModel):
     title: str = Field(..., min_length=2, max_length=300)
-    price: float = Field(..., gt=0, le=100000)
+    # cap must fit high-denomination currencies: a normal IDR bouquet is ~1,000,000
+    price: float = Field(..., gt=0, le=100_000_000)
     currency: str = Field(..., min_length=3, max_length=3, description="ISO code, e.g. USD, EUR, IDR")
     image_url: str | None = Field(None, max_length=1000, description="Photo URL — or use /v1/partners/upload")
     product_url: str | None = Field(None, max_length=1000, description="This item on your own site/Instagram, if any")
@@ -367,6 +516,7 @@ def register_partner(p: PartnerIn):
              hashlib.sha256(key.encode()).hexdigest(), p.shop_name.strip(), centry["iso2"],
              centry["country"], p.city.strip(), p.email.strip(), p.phone, p.website, ig or None, p.description),
         )
+    _notify_partner_welcome(p.email.strip(), p.shop_name.strip())
     return {
         "partner": _partner_public({"id": pid, "shop_name": p.shop_name.strip(), "iso2": centry["iso2"],
                                     "country": centry["country"], "city": p.city.strip(), "website": p.website,
@@ -437,6 +587,19 @@ def partner_item_delete(item_id: int, partner: dict = Depends(_partner_auth)):
     return {"id": item_id, "status": "deleted"}
 
 
+@app.get("/v1/partners/orders", tags=["partners"], summary="Paid orders routed to your shop")
+def partner_orders(partner: dict = Depends(_partner_auth)):
+    with _db() as conn:
+        rows = conn.execute(
+            "SELECT id, created_at, status, item_title, item_price, item_currency, budget_usd,"
+            " recipient_name, recipient_phone, street, city, postal_code, address,"
+            " delivery_instructions, delivery_date, delivery_time, confirm_time_with_customer,"
+            " message, customer_name"
+            " FROM orders WHERE partner_id = ? AND status = 'paid' ORDER BY created_at DESC",
+            (partner["id"],)).fetchall()
+    return {"count": len(rows), "orders": [dict(r) for r in rows]}
+
+
 @app.post("/v1/partners/upload", tags=["partners"], summary="Upload a bouquet photo (jpeg/png/webp, ≤5MB)")
 async def partner_upload(partner: dict = Depends(_partner_auth), file: UploadFile = File(...)):
     ext = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}.get(file.content_type)
@@ -472,6 +635,123 @@ def _partner_catalog_items(iso2: str) -> list[dict]:
                        "country": d["pcountry"], "partner": True},
         })
     return out
+
+
+# ─── transactional email (Resend) ───
+
+def _send_email(to: str, subject: str, html: str) -> bool:
+    if not RESEND_API_KEY or not to:
+        return False
+    try:
+        r = requests.post(
+            "https://api.resend.com/emails",
+            headers={"Authorization": f"Bearer {RESEND_API_KEY}"},
+            json={"from": EMAIL_FROM, "to": [to], "subject": subject, "html": html},
+            timeout=10,
+        )
+        if not r.ok:
+            print(f"resend failed to {to}: {r.status_code} {r.text[:200]}", flush=True)
+        return r.ok
+    except requests.RequestException as exc:
+        print(f"resend error to {to}: {exc}", flush=True)
+        return False
+
+
+def _email_shell(body: str) -> str:
+    return (
+        '<div style="font-family:Georgia,serif;max-width:560px;margin:0 auto;padding:24px;color:#22301f">'
+        '<p style="font-size:1.3em;margin:0 0 18px">🌸 <strong>yo.florist</strong></p>'
+        f"{body}"
+        '<p style="margin-top:28px;font-size:0.85em;color:#5c7a54">yo.florist — every florist in your city, one search.<br>'
+        'Questions? Just reply to this email.</p></div>'
+    )
+
+
+def _notify_partner_welcome(email: str, shop_name: str):
+    _send_email(email, f"{shop_name} is registered on yo.florist — under review", _email_shell(
+        f"<p>Welcome aboard! <strong>{shop_name}</strong> is registered and under review "
+        "(usually done the same day).</p>"
+        "<p>You can build your catalog right now at "
+        '<a href="https://yo.florist/dashboard">yo.florist/dashboard</a> with the partner key '
+        "shown at signup — everything goes live the moment you're approved. "
+        "The key was shown only once, so keep it safe; we can't recover it, only issue a new one.</p>"
+        "<p>You'll get another email from us when you're live, and one for every paid order "
+        "with the recipient's full delivery details.</p>"
+    ))
+
+
+def _notify_partner_approved(email: str, shop_name: str, iso2: str):
+    _send_email(email, f"{shop_name} is now live on yo.florist 🌸", _email_shell(
+        f"<p><strong>{shop_name}</strong> is approved — your bouquets are live at "
+        f'<a href="https://yo.florist/flowers?country={iso2}">yo.florist/flowers</a> '
+        "with your shop named on every card.</p>"
+        "<p>Paid orders arrive by email with the recipient's address, phone, delivery date "
+        "and card message — you make and deliver. Manage your catalog anytime at "
+        '<a href="https://yo.florist/dashboard">yo.florist/dashboard</a>.</p>'
+    ))
+
+
+def _order_details_html(o: dict) -> str:
+    when = o.get("delivery_date") or "date not set"
+    if o.get("confirm_time_with_customer"):
+        when += " — ☎️ please call the recipient to agree a convenient time before delivering"
+    elif o.get("delivery_time"):
+        when += f", {o['delivery_time']}"
+    if o.get("item_title"):
+        what = f"{o['item_title']} — {o.get('item_currency') or ''} {o.get('item_price') or ''}".strip()
+    else:
+        what = f"Florist's choice bouquet — ${o.get('budget_usd') or 65} USD budget"
+    addr = ", ".join(str(x) for x in (o.get("street"), o.get("city"), o.get("postal_code")) if x) or o.get("address") or ""
+    rows = [
+        ("Order", o["id"]),
+        ("Bouquet", what),
+        ("Recipient", o.get("recipient_name") or ""),
+        ("Phone", o.get("recipient_phone") or ""),
+        ("Address", addr),
+        ("Deliver", when),
+        ("Instructions", o.get("delivery_instructions") or ""),
+        ("Card message", o.get("message") or "(no card message)"),
+        ("From customer", o.get("customer_name") or ""),
+    ]
+    trs = "".join(
+        f'<tr><td style="padding:6px 14px 6px 0;color:#5c7a54;white-space:nowrap;vertical-align:top">{k}</td>'
+        f'<td style="padding:6px 0">{v}</td></tr>'
+        for k, v in rows if v
+    )
+    return f'<table style="border-collapse:collapse;font-size:0.95em">{trs}</table>'
+
+
+def _notify_paid_order(o: dict) -> None:
+    """Email the fulfilling florist (and the admin) a paid order's full details, once."""
+    if o.get("florist_notified_at"):
+        return
+    details = _order_details_html(o)
+    partner_email = None
+    if o.get("partner_id"):
+        with _db() as conn:
+            p = conn.execute("SELECT email FROM partners WHERE id = ?", (o["partner_id"],)).fetchone()
+        if p:
+            partner_email = p["email"]
+    sent = False
+    if partner_email:
+        sent = _send_email(partner_email, f"New paid order {o['id']} — ready to make & deliver 🌸", _email_shell(
+            "<p><strong>You have a new paid order.</strong> Payment has cleared — "
+            "everything you need is below. Please confirm the flowers can be delivered as requested.</p>"
+            + details
+        ))
+    # admin always gets a copy (directory florists have no partner account yet)
+    admin_sent = _send_email(
+        ADMIN_EMAIL,
+        f"[yo.florist] paid order {o['id']} → {o.get('florist')}"
+        + ("" if partner_email else " (manual handoff needed)"),
+        _email_shell(f"<p>Routed to <strong>{o.get('florist')}</strong>"
+                     f"{f' (partner, emailed {partner_email})' if sent else ' — no partner email, engage manually'}.</p>"
+                     + details),
+    )
+    if sent or admin_sent:
+        with _db() as conn:
+            conn.execute("UPDATE orders SET florist_notified_at = ? WHERE id = ?",
+                         (datetime.now(timezone.utc).isoformat(timespec="seconds"), o["id"]))
 
 
 # ─── admin: shop moderation (yo.florist/admin) ───
@@ -520,9 +800,12 @@ def admin_partner_set_status(pid: str, status: str = Query(..., description="act
     if status not in ("active", "rejected", "suspended", "pending"):
         raise HTTPException(status_code=422, detail="Invalid status")
     with _db() as conn:
-        cur = conn.execute("UPDATE partners SET status = ? WHERE id = ?", (status, pid))
-    if cur.rowcount == 0:
-        raise HTTPException(status_code=404, detail="No such partner")
+        row = conn.execute("SELECT status, email, shop_name, iso2 FROM partners WHERE id = ?", (pid,)).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="No such partner")
+        conn.execute("UPDATE partners SET status = ? WHERE id = ?", (status, pid))
+    if status == "active" and row["status"] != "active":
+        _notify_partner_approved(row["email"], row["shop_name"], row["iso2"])
     return {"id": pid, "status": status}
 
 
@@ -531,7 +814,9 @@ def admin_orders(limit: int = Query(50, ge=1, le=200)):
     with _db() as conn:
         rows = conn.execute(
             "SELECT id, created_at, status, iso2, florist, partner_id, customer_name, email,"
-            " recipient_name, city, delivery_date, delivery_time, confirm_time_with_customer,"
+            " recipient_name, recipient_phone, street, city, postal_code, address,"
+            " delivery_instructions, message, delivery_date, delivery_time,"
+            " confirm_time_with_customer, florist_notified_at,"
             " item_title, item_price, item_currency, budget_usd"
             " FROM orders ORDER BY created_at DESC LIMIT ?", (limit,)).fetchall()
     return {"count": len(rows), "orders": [dict(r) for r in rows]}
@@ -586,6 +871,7 @@ def _db() -> sqlite3.Connection:
         ("delivery_time", "TEXT"),
         ("confirm_time_with_customer", "INTEGER"),
         ("partner_id", "TEXT"),
+        ("florist_notified_at", "TEXT"),
     ):
         if col not in have:
             conn.execute(f"ALTER TABLE orders ADD COLUMN {col} {typ}")
@@ -705,10 +991,48 @@ def _refresh_payment_status(row: dict) -> str:
         if r.ok and r.json().get("payment_status") == "paid":
             with _db() as conn:
                 conn.execute("UPDATE orders SET status='paid' WHERE id=?", (row["id"],))
+            try:
+                _notify_paid_order({**row, "status": "paid"})
+            except Exception as exc:
+                print(f"paid-order notify error for {row['id']}: {exc}", flush=True)
             return "paid"
     except requests.RequestException:
         pass
     return status
+
+
+def _sweep_pending_payments() -> dict:
+    """Poll Stripe for recent unpaid orders so a customer who pays and closes the
+    tab (never landing on thanks.html) still triggers the florist handoff email."""
+    cutoff = datetime.now(timezone.utc).timestamp() - 7 * 86400
+    cutoff_iso = datetime.fromtimestamp(cutoff, timezone.utc).isoformat(timespec="seconds")
+    with _db() as conn:
+        rows = [dict(r) for r in conn.execute(
+            "SELECT * FROM orders WHERE status = 'pending_payment'"
+            " AND stripe_session_id IS NOT NULL AND created_at >= ?", (cutoff_iso,))]
+    paid = sum(1 for row in rows if _refresh_payment_status(row) == "paid")
+    return {"checked": len(rows), "newly_paid": paid}
+
+
+@app.post("/v1/admin/sweep-payments", include_in_schema=False, dependencies=[Depends(_admin_auth)])
+def admin_sweep_payments():
+    return _sweep_pending_payments()
+
+
+@app.on_event("startup")
+def _start_payment_sweeper():
+    if not STRIPE_SECRET_KEY:
+        return
+
+    def loop():
+        while True:
+            time.sleep(600)
+            try:
+                _sweep_pending_payments()
+            except Exception as exc:
+                print(f"payment sweep error: {exc}", flush=True)
+
+    threading.Thread(target=loop, daemon=True).start()
 
 
 class OrderIn(BaseModel):
